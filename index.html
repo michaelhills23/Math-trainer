@@ -1,0 +1,1561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Math Trainer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] { -moz-appearance: textfield; }
+    
+    @keyframes correct-flash {
+      0% { background-color: #22c55e; }
+      100% { background-color: white; }
+    }
+    @keyframes wrong-shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-10px); }
+      40%, 80% { transform: translateX(10px); }
+    }
+    @keyframes streak-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+    }
+    @keyframes confetti-fall {
+      0% { transform: translateY(-100%) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+    }
+    @keyframes bounce-in {
+      0% { transform: scale(0); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+    @keyframes countdown-pulse {
+      0% { transform: scale(0.5); opacity: 0; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .correct-flash { animation: correct-flash 0.5s ease-out; }
+    .wrong-shake { animation: wrong-shake 0.5s ease-out; }
+    .streak-pulse { animation: streak-pulse 0.3s ease-out; }
+    .bounce-in { animation: bounce-in 0.5s ease-out; }
+    .countdown-pulse { animation: countdown-pulse 0.8s ease-out; }
+    
+    .confetti {
+      position: fixed;
+      width: 10px;
+      height: 10px;
+      top: -10px;
+      animation: confetti-fall 3s linear forwards;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // Sound generation using Web Audio API
+    const useSound = () => {
+      const audioContextRef = useRef(null);
+      
+      const getContext = () => {
+        if (!audioContextRef.current) {
+          audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        return audioContextRef.current;
+      };
+      
+      const playTone = (frequency, duration, type = 'sine', volume = 0.3) => {
+        try {
+          const ctx = getContext();
+          const oscillator = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          
+          oscillator.connect(gainNode);
+          gainNode.connect(ctx.destination);
+          
+          oscillator.frequency.value = frequency;
+          oscillator.type = type;
+          gainNode.gain.value = volume;
+          gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+          
+          oscillator.start(ctx.currentTime);
+          oscillator.stop(ctx.currentTime + duration);
+        } catch (e) {
+          console.log('Sound not available');
+        }
+      };
+      
+      const playCorrect = () => {
+        playTone(523.25, 0.1); // C5
+        setTimeout(() => playTone(659.25, 0.1), 100); // E5
+        setTimeout(() => playTone(783.99, 0.15), 200); // G5
+      };
+      
+      const playWrong = () => {
+        playTone(200, 0.3, 'sawtooth', 0.2);
+      };
+      
+      const playStreak = () => {
+        playTone(523.25, 0.1);
+        setTimeout(() => playTone(659.25, 0.1), 80);
+        setTimeout(() => playTone(783.99, 0.1), 160);
+        setTimeout(() => playTone(1046.50, 0.2), 240);
+      };
+      
+      const playCelebration = () => {
+        const notes = [523.25, 587.33, 659.25, 698.46, 783.99, 880, 987.77, 1046.50];
+        notes.forEach((note, i) => {
+          setTimeout(() => playTone(note, 0.15), i * 100);
+        });
+      };
+      
+      const playCountdown = () => {
+        playTone(440, 0.2);
+      };
+      
+      const playGo = () => {
+        playTone(880, 0.3);
+      };
+      
+      return { playCorrect, playWrong, playStreak, playCelebration, playCountdown, playGo };
+    };
+
+    // Confetti component
+    const Confetti = ({ count = 50 }) => {
+      const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
+      
+      return (
+        <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
+          {[...Array(count)].map((_, i) => (
+            <div
+              key={i}
+              className="confetti"
+              style={{
+                left: `${Math.random() * 100}%`,
+                backgroundColor: colors[Math.floor(Math.random() * colors.length)],
+                animationDelay: `${Math.random() * 2}s`,
+                animationDuration: `${2 + Math.random() * 2}s`,
+              }}
+            />
+          ))}
+        </div>
+      );
+    };
+
+    // Progress history helpers
+    const saveResult = (result) => {
+      try {
+        const history = JSON.parse(localStorage.getItem('mathTrainerHistory') || '[]');
+        history.push({
+          ...result,
+          date: new Date().toISOString()
+        });
+        // Keep last 100 sessions
+        if (history.length > 100) history.shift();
+        localStorage.setItem('mathTrainerHistory', JSON.stringify(history));
+      } catch (e) {
+        console.log('Could not save history');
+      }
+    };
+
+    const getHistory = () => {
+      try {
+        return JSON.parse(localStorage.getItem('mathTrainerHistory') || '[]');
+      } catch (e) {
+        return [];
+      }
+    };
+
+    const getPersonalBests = () => {
+      const history = getHistory();
+      const bests = {};
+      
+      history.forEach(session => {
+        const key = session.operations.sort().join(',');
+        if (!bests[key] || session.percentage > bests[key].percentage) {
+          bests[key] = session;
+        }
+      });
+      
+      return bests;
+    };
+
+    function MathTrainer() {
+      const [stage, setStage] = useState('setup');
+      const [operations, setOperations] = useState({
+        addition: false,
+        subtraction: false,
+        multiplication: false,
+        division: false
+      });
+      const [digits, setDigits] = useState({
+        addition: 1,
+        subtraction: 1,
+        multiplication: '1x1', // Special multiplication modes
+        division: 1
+      });
+      const [mode, setMode] = useState('questions');
+      const [questionCount, setQuestionCount] = useState(10);
+      const [timeLimit, setTimeLimit] = useState(60);
+      const [adaptiveDifficulty, setAdaptiveDifficulty] = useState(false);
+      const [soundEnabled, setSoundEnabled] = useState(true);
+      
+      const [questions, setQuestions] = useState([]);
+      const [currentIndex, setCurrentIndex] = useState(0);
+      const [answer, setAnswer] = useState('');
+      const [results, setResults] = useState([]);
+      const [startTime, setStartTime] = useState(null);
+      const [endTime, setEndTime] = useState(null);
+      const [timeRemaining, setTimeRemaining] = useState(0);
+      
+      const [streak, setStreak] = useState(0);
+      const [maxStreak, setMaxStreak] = useState(0);
+      const [points, setPoints] = useState(0);
+      const [feedback, setFeedback] = useState(null); // 'correct' or 'wrong'
+      const [showConfetti, setShowConfetti] = useState(false);
+      const [countdown, setCountdown] = useState(null);
+      const [currentDigits, setCurrentDigits] = useState({...digits});
+      const [showHistory, setShowHistory] = useState(false);
+      const [showShareCard, setShowShareCard] = useState(false);
+      const [shareMessage, setShareMessage] = useState('');
+      const [challengeMode, setChallengeMode] = useState(false);
+      const [challengeCreator, setChallengeCreator] = useState('');
+      const [challengeScore, setChallengeScore] = useState(null);
+      const [showChallengeInput, setShowChallengeInput] = useState(false);
+      const [challengeCodeInput, setChallengeCodeInput] = useState('');
+      const [playerName, setPlayerName] = useState('');
+      
+      const shareCardRef = useRef(null);
+      
+      const inputRef = useRef(null);
+      const timerRef = useRef(null);
+      const feedbackTimeoutRef = useRef(null);
+      
+      const sound = useSound();
+
+      const generateNumber = (numDigits) => {
+        const min = numDigits === 1 ? 1 : Math.pow(10, numDigits - 1);
+        const max = Math.pow(10, numDigits) - 1;
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      };
+      
+      // Generate multiplication numbers based on mode (non-seeded version)
+      const generateMultNums = (multMode) => {
+        switch (multMode) {
+          case '1x1': // 1-12 × 1-12
+            return [Math.floor(Math.random() * 12) + 1, Math.floor(Math.random() * 12) + 1];
+          case '2x1': // 10-99 × 1-9
+            return [Math.floor(Math.random() * 90) + 10, Math.floor(Math.random() * 9) + 1];
+          case '3x1': // 100-999 × 1-9
+            return [Math.floor(Math.random() * 900) + 100, Math.floor(Math.random() * 9) + 1];
+          case '2x2': // 10-99 × 10-99
+            return [Math.floor(Math.random() * 90) + 10, Math.floor(Math.random() * 90) + 10];
+          default:
+            return [Math.floor(Math.random() * 12) + 1, Math.floor(Math.random() * 12) + 1];
+        }
+      };
+
+      const generateQuestion = useCallback((opDigits) => {
+        const activeOps = Object.entries(operations).filter(([_, active]) => active);
+        if (activeOps.length === 0) return null;
+        
+        const [op] = activeOps[Math.floor(Math.random() * activeOps.length)];
+        const numDigits = opDigits ? opDigits[op] : digits[op];
+        
+        let num1, num2, correctAnswer, symbol;
+        
+        switch (op) {
+          case 'addition':
+            num1 = generateNumber(numDigits);
+            num2 = generateNumber(numDigits);
+            correctAnswer = num1 + num2;
+            symbol = '+';
+            break;
+          case 'subtraction':
+            num1 = generateNumber(numDigits);
+            num2 = generateNumber(numDigits);
+            if (num2 > num1) [num1, num2] = [num2, num1];
+            correctAnswer = num1 - num2;
+            symbol = '−';
+            break;
+          case 'multiplication':
+            [num1, num2] = generateMultNums(numDigits);
+            correctAnswer = num1 * num2;
+            symbol = '×';
+            break;
+          case 'division':
+            num2 = generateNumber(numDigits);
+            correctAnswer = generateNumber(numDigits);
+            num1 = num2 * correctAnswer;
+            symbol = '÷';
+            break;
+          default:
+            return null;
+        }
+        
+        return { num1, num2, symbol, correctAnswer, operation: op, digits: numDigits };
+      }, [operations, digits]);
+
+      const startCountdown = () => {
+        const activeOps = Object.entries(operations).filter(([_, active]) => active);
+        if (activeOps.length === 0) {
+          alert('Please select at least one operation!');
+          return;
+        }
+        
+        setCountdown(3);
+        setStage('countdown');
+      };
+
+      useEffect(() => {
+        if (stage === 'countdown' && countdown !== null) {
+          if (countdown > 0) {
+            if (soundEnabled) sound.playCountdown();
+            const timer = setTimeout(() => setCountdown(countdown - 1), 800);
+            return () => clearTimeout(timer);
+          } else {
+            if (soundEnabled) sound.playGo();
+            setTimeout(() => startPractice(), 500);
+          }
+        }
+      }, [stage, countdown, soundEnabled]);
+
+      const startPractice = () => {
+        const count = mode === 'questions' ? questionCount : 100;
+        
+        // Generate a random seed for this session
+        const seed = Math.floor(Math.random() * 1000000);
+        setChallengeSeed(seed);
+        
+        // Generate questions from seed
+        const newQuestions = generateQuestionsFromSeed(seed, count, operations, digits);
+        
+        setQuestions(newQuestions);
+        setCurrentIndex(0);
+        setResults([]);
+        setAnswer('');
+        setStartTime(Date.now());
+        setEndTime(null);
+        setStreak(0);
+        setMaxStreak(0);
+        setPoints(0);
+        setCurrentDigits({...digits});
+        setCountdown(null);
+        
+        if (mode === 'time') {
+          setTimeRemaining(timeLimit);
+        }
+        
+        setStage('practicing');
+      };
+
+      useEffect(() => {
+        if (stage === 'practicing' && inputRef.current) {
+          setTimeout(() => {
+            if (inputRef.current) {
+              inputRef.current.focus();
+            }
+          }, 10);
+        }
+      }, [stage, currentIndex]);
+
+      useEffect(() => {
+        if (stage === 'practicing' && mode === 'time' && timeRemaining > 0) {
+          timerRef.current = setTimeout(() => {
+            setTimeRemaining(t => t - 1);
+          }, 1000);
+          return () => clearTimeout(timerRef.current);
+        } else if (stage === 'practicing' && mode === 'time' && timeRemaining === 0 && startTime) {
+          finishPractice();
+        }
+      }, [stage, mode, timeRemaining, startTime]);
+
+      const finishPractice = (finalResults) => {
+        const resultsToSave = finalResults || results;
+        const correct = resultsToSave.filter(r => r.isCorrect).length;
+        const total = resultsToSave.length;
+        const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+        
+        setEndTime(Date.now());
+        setStage('results');
+        if (timerRef.current) clearTimeout(timerRef.current);
+        
+        if (percentage >= 80) {
+          setShowConfetti(true);
+          if (soundEnabled) sound.playCelebration();
+          setTimeout(() => setShowConfetti(false), 4000);
+        }
+        
+        // Save to history
+        const activeOps = Object.entries(operations).filter(([_, active]) => active).map(([op]) => op);
+        saveResult({
+          operations: activeOps,
+          digits: {...digits},
+          mode,
+          correct,
+          total,
+          percentage,
+          maxStreak,
+          points,
+          timeTaken: Date.now() - startTime
+        });
+      };
+
+      const submitAnswer = () => {
+        if (answer === '') return;
+        
+        if (feedbackTimeoutRef.current) {
+          clearTimeout(feedbackTimeoutRef.current);
+        }
+        
+        const currentQuestion = questions[currentIndex];
+        const userAnswer = parseInt(answer, 10);
+        const isCorrect = userAnswer === currentQuestion.correctAnswer;
+        
+        // Calculate points
+        let earnedPoints = 0;
+        let newStreak = streak;
+        
+        // Helper to get difficulty multiplier for points
+        const getDifficultyMultiplier = (questionDigits) => {
+          if (typeof questionDigits === 'string') {
+            // Multiplication modes
+            const multPoints = { '1x1': 1, '2x1': 2, '3x1': 3, '2x2': 4 };
+            return multPoints[questionDigits] || 1;
+          }
+          return questionDigits; // Regular number for other operations
+        };
+        
+        if (isCorrect) {
+          newStreak = streak + 1;
+          earnedPoints = 10 * getDifficultyMultiplier(currentQuestion.digits); // More points for harder questions
+          if (newStreak >= 3) {
+            earnedPoints += newStreak * 5; // Streak bonus
+          }
+          if (soundEnabled) {
+            if (newStreak > 0 && newStreak % 5 === 0) {
+              sound.playStreak();
+            } else {
+              sound.playCorrect();
+            }
+          }
+          setStreak(newStreak);
+          setMaxStreak(Math.max(maxStreak, newStreak));
+          setFeedback('correct');
+          
+          // Adaptive difficulty: increase after 3 correct in a row
+          if (adaptiveDifficulty && newStreak > 0 && newStreak % 3 === 0) {
+            setCurrentDigits(prev => {
+              const newDigits = {...prev};
+              Object.keys(newDigits).forEach(op => {
+                if (op === 'multiplication') return; // Skip multiplication for adaptive
+                if (operations[op] && newDigits[op] < 3) {
+                  newDigits[op] = Math.min(3, newDigits[op] + 1);
+                }
+              });
+              return newDigits;
+            });
+          }
+        } else {
+          newStreak = 0;
+          setStreak(0);
+          setFeedback('wrong');
+          if (soundEnabled) sound.playWrong();
+          
+          // Adaptive difficulty: decrease after wrong answer
+          if (adaptiveDifficulty) {
+            setCurrentDigits(prev => {
+              const newDigits = {...prev};
+              const op = currentQuestion.operation;
+              if (op === 'multiplication') return prev; // Skip multiplication for adaptive
+              if (newDigits[op] > 1) {
+                newDigits[op] = Math.max(1, newDigits[op] - 1);
+              }
+              return newDigits;
+            });
+          }
+        }
+        
+        setPoints(p => p + earnedPoints);
+        
+        const newResults = [...results, {
+          ...currentQuestion,
+          userAnswer,
+          isCorrect
+        }];
+        
+        // Clear feedback after delay and move to next question
+        feedbackTimeoutRef.current = setTimeout(() => {
+          setFeedback(null);
+          
+          const nextIndex = currentIndex + 1;
+          
+          if (mode === 'questions' && nextIndex >= questionCount) {
+            setResults(newResults);
+            finishPractice(newResults);
+          } else if (nextIndex < questions.length) {
+            // Generate new question with current difficulty
+            const updatedQuestions = [...questions];
+            if (nextIndex + 5 < questions.length) {
+              updatedQuestions[nextIndex + 5] = generateQuestion(currentDigits);
+            }
+            setQuestions(updatedQuestions);
+            setResults(newResults);
+            setAnswer('');
+            setCurrentIndex(nextIndex);
+          } else {
+            setResults(newResults);
+            finishPractice(newResults);
+          }
+        }, 500);
+      };
+      
+      const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitAnswer();
+        }
+      };
+      
+      const skipQuestion = () => {
+        if (feedbackTimeoutRef.current) {
+          clearTimeout(feedbackTimeoutRef.current);
+        }
+        
+        const currentQuestion = questions[currentIndex];
+        setStreak(0);
+        setFeedback('wrong');
+        if (soundEnabled) sound.playWrong();
+        
+        const newResults = [...results, {
+          ...currentQuestion,
+          userAnswer: null,
+          isCorrect: false,
+          skipped: true
+        }];
+        
+        feedbackTimeoutRef.current = setTimeout(() => {
+          setFeedback(null);
+          
+          const nextIndex = currentIndex + 1;
+          
+          if (mode === 'questions' && nextIndex >= questionCount) {
+            setResults(newResults);
+            finishPractice(newResults);
+          } else if (nextIndex < questions.length) {
+            setResults(newResults);
+            setAnswer('');
+            setCurrentIndex(nextIndex);
+          } else {
+            setResults(newResults);
+            finishPractice(newResults);
+          }
+        }, 300);
+      };
+
+      const formatTime = (ms) => {
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      };
+
+      const getGrade = (percentage) => {
+        if (percentage >= 90) return { grade: 'A', emoji: '🌟', message: 'Excellent!' };
+        if (percentage >= 80) return { grade: 'B', emoji: '😊', message: 'Great job!' };
+        if (percentage >= 70) return { grade: 'C', emoji: '👍', message: 'Good work!' };
+        if (percentage >= 60) return { grade: 'D', emoji: '💪', message: 'Keep practicing!' };
+        return { grade: 'F', emoji: '📚', message: "Let's try again!" };
+      };
+
+      const restart = () => {
+        setStage('setup');
+        setQuestions([]);
+        setCurrentIndex(0);
+        setResults([]);
+        setAnswer('');
+        setFeedback(null);
+        setStreak(0);
+        setMaxStreak(0);
+        setPoints(0);
+        setChallengeMode(false);
+        setChallengeCreator('');
+        setChallengeScore(null);
+      };
+      
+      const getShareText = () => {
+        const correct = results.filter(r => r.isCorrect).length;
+        const total = results.length;
+        const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+        const { grade, emoji } = getGrade(percentage);
+        const time = formatTime(endTime - startTime);
+        const code = encodeChallenge();
+        const name = playerName || 'I';
+        
+        return `🧮 ${name} scored ${percentage}%! ${emoji}
+
+📊 ${correct}/${total} correct
+⏱️ Time: ${time}
+🔥 Best Streak: ${maxStreak}
+
+Beat my score! Code: ${code}`;
+      };
+      
+      const shareResults = async () => {
+        const text = getShareText();
+        
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: 'Math Trainer Results',
+              text: text
+            });
+          } catch (e) {
+            if (e.name !== 'AbortError') {
+              copyToClipboard(text);
+            }
+          }
+        } else {
+          copyToClipboard(text);
+        }
+      };
+      
+      const copyToClipboard = async (text) => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setShareMessage('Copied to clipboard! 📋');
+          setTimeout(() => setShareMessage(''), 2000);
+        } catch (e) {
+          setShareMessage('Could not copy');
+          setTimeout(() => setShareMessage(''), 2000);
+        }
+      };
+      
+      const downloadShareCard = async () => {
+        if (!shareCardRef.current) return;
+        
+        try {
+          // Use html2canvas-like approach with SVG
+          const card = shareCardRef.current;
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const scale = 2; // Higher resolution
+          
+          canvas.width = 400 * scale;
+          canvas.height = 500 * scale;
+          ctx.scale(scale, scale);
+          
+          // Draw background gradient
+          const gradient = ctx.createLinearGradient(0, 0, 400, 500);
+          gradient.addColorStop(0, '#a855f7');
+          gradient.addColorStop(0.5, '#ec4899');
+          gradient.addColorStop(1, '#f97316');
+          ctx.fillStyle = gradient;
+          ctx.roundRect(0, 0, 400, 500, 20);
+          ctx.fill();
+          
+          // Draw white card
+          ctx.fillStyle = 'white';
+          ctx.roundRect(20, 20, 360, 460, 15);
+          ctx.fill();
+          
+          // Get data
+          const correct = results.filter(r => r.isCorrect).length;
+          const total = results.length;
+          const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+          const { grade, emoji } = getGrade(percentage);
+          
+          // Draw text
+          ctx.fillStyle = '#1f2937';
+          ctx.textAlign = 'center';
+          
+          // Title
+          ctx.font = 'bold 28px system-ui, sans-serif';
+          ctx.fillText('🧮 Math Trainer', 200, 70);
+          
+          // Emoji
+          ctx.font = '80px system-ui, sans-serif';
+          ctx.fillText(emoji, 200, 170);
+          
+          // Percentage
+          ctx.font = 'bold 64px system-ui, sans-serif';
+          ctx.fillStyle = percentage >= 70 ? '#22c55e' : percentage >= 50 ? '#eab308' : '#ef4444';
+          ctx.fillText(`${percentage}%`, 200, 260);
+          
+          // Grade
+          ctx.font = 'bold 36px system-ui, sans-serif';
+          ctx.fillStyle = '#9333ea';
+          ctx.fillText(`Grade: ${grade}`, 200, 310);
+          
+          // Stats
+          ctx.font = '20px system-ui, sans-serif';
+          ctx.fillStyle = '#6b7280';
+          ctx.fillText(`${correct}/${total} correct`, 200, 360);
+          ctx.fillText(`🔥 ${maxStreak} streak  ⭐ ${points} pts`, 200, 390);
+          
+          // Date
+          ctx.font = '16px system-ui, sans-serif';
+          ctx.fillStyle = '#9ca3af';
+          ctx.fillText(new Date().toLocaleDateString(), 200, 440);
+          
+          // Download
+          const link = document.createElement('a');
+          link.download = `math-trainer-${percentage}percent.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          
+          setShareMessage('Image saved! 🖼️');
+          setTimeout(() => setShareMessage(''), 2000);
+        } catch (e) {
+          console.error('Could not create image:', e);
+          setShareMessage('Could not save image');
+          setTimeout(() => setShareMessage(''), 2000);
+        }
+      };
+      
+      // Challenge system functions
+      // Seed-based encoding: just store the seed that generates the same questions
+      const [challengeSeed, setChallengeSeed] = useState(null);
+      
+      // Seeded random number generator (mulberry32)
+      const seededRandom = (seed) => {
+        return () => {
+          seed = (seed + 0x6D2B79F5) | 0;
+          let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      };
+      
+      const generateQuestionsFromSeed = (seed, count, ops, digs) => {
+        const random = seededRandom(seed);
+        const activeOps = Object.entries(ops).filter(([_, active]) => active).map(([op]) => op);
+        if (activeOps.length === 0) return [];
+        
+        const genNum = (numDigits) => {
+          const min = numDigits === 1 ? 1 : Math.pow(10, numDigits - 1);
+          const max = Math.pow(10, numDigits) - 1;
+          return Math.floor(random() * (max - min + 1)) + min;
+        };
+        
+        // Generate multiplication numbers based on mode
+        const genMultNums = (multMode) => {
+          switch (multMode) {
+            case '1x1': // 1-12 × 1-12
+              return [Math.floor(random() * 12) + 1, Math.floor(random() * 12) + 1];
+            case '2x1': // 10-99 × 1-9
+              return [Math.floor(random() * 90) + 10, Math.floor(random() * 9) + 1];
+            case '3x1': // 100-999 × 1-9
+              return [Math.floor(random() * 900) + 100, Math.floor(random() * 9) + 1];
+            case '2x2': // 10-99 × 10-99
+              return [Math.floor(random() * 90) + 10, Math.floor(random() * 90) + 10];
+            default:
+              return [Math.floor(random() * 12) + 1, Math.floor(random() * 12) + 1];
+          }
+        };
+        
+        const questions = [];
+        for (let i = 0; i < count; i++) {
+          const op = activeOps[Math.floor(random() * activeOps.length)];
+          const numDigits = digs[op];
+          
+          let num1, num2, correctAnswer, symbol;
+          
+          switch (op) {
+            case 'addition':
+              num1 = genNum(numDigits);
+              num2 = genNum(numDigits);
+              correctAnswer = num1 + num2;
+              symbol = '+';
+              break;
+            case 'subtraction':
+              num1 = genNum(numDigits);
+              num2 = genNum(numDigits);
+              if (num2 > num1) [num1, num2] = [num2, num1];
+              correctAnswer = num1 - num2;
+              symbol = '−';
+              break;
+            case 'multiplication':
+              [num1, num2] = genMultNums(numDigits);
+              correctAnswer = num1 * num2;
+              symbol = '×';
+              break;
+            case 'division':
+              num2 = genNum(numDigits);
+              correctAnswer = genNum(numDigits);
+              num1 = num2 * correctAnswer;
+              symbol = '÷';
+              break;
+          }
+          
+          questions.push({ num1, num2, symbol, correctAnswer, operation: op, digits: numDigits });
+        }
+        return questions;
+      };
+      
+      // Encode: score-seed-count-ops-digits
+      // ops: bitmask (add=1, sub=2, mul=4, div=8)
+      // digits: packed as add*1 + sub*4 + mul*16 + div*64 (each 0-3)
+      const encodeChallenge = () => {
+        const correct = results.filter(r => r.isCorrect).length;
+        const total = results.length;
+        const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+        
+        const opBits = (operations.addition ? 1 : 0) | 
+                       (operations.subtraction ? 2 : 0) | 
+                       (operations.multiplication ? 4 : 0) | 
+                       (operations.division ? 8 : 0);
+        
+        // Map multiplication mode to number: 1x1=0, 2x1=1, 3x1=2, 2x2=3
+        const multModeMap = { '1x1': 0, '2x1': 1, '3x1': 2, '2x2': 3 };
+        const multModeNum = multModeMap[digits.multiplication] || 0;
+        
+        const digitsPacked = (digits.addition - 1) + 
+                            ((digits.subtraction - 1) * 4) + 
+                            (multModeNum * 16) + 
+                            ((digits.division - 1) * 64);
+        
+        // Format: score.seed.count.ops.digits (all base36)
+        return `${percentage.toString(36)}.${challengeSeed.toString(36)}.${total.toString(36)}.${opBits.toString(36)}.${digitsPacked.toString(36)}`;
+      };
+      
+      const decodeChallenge = (code) => {
+        try {
+          const parts = code.split('.');
+          if (parts.length !== 5) throw new Error('Invalid format');
+          
+          const [scoreStr, seedStr, countStr, opsStr, digitsStr] = parts;
+          
+          const creatorScore = parseInt(scoreStr, 36);
+          const seed = parseInt(seedStr, 36);
+          const count = parseInt(countStr, 36);
+          const opBits = parseInt(opsStr, 36);
+          const digitsPacked = parseInt(digitsStr, 36);
+          
+          const ops = {
+            addition: !!(opBits & 1),
+            subtraction: !!(opBits & 2),
+            multiplication: !!(opBits & 4),
+            division: !!(opBits & 8)
+          };
+          
+          // Map number back to multiplication mode
+          const multModes = ['1x1', '2x1', '3x1', '2x2'];
+          
+          const digs = {
+            addition: (digitsPacked % 4) + 1,
+            subtraction: (Math.floor(digitsPacked / 4) % 4) + 1,
+            multiplication: multModes[Math.floor(digitsPacked / 16) % 4],
+            division: (Math.floor(digitsPacked / 64) % 4) + 1
+          };
+          
+          const questions = generateQuestionsFromSeed(seed, count, ops, digs);
+          
+          return {
+            questions,
+            seed,
+            ops,
+            digs,
+            mode: 'questions',
+            creator: 'Friend',
+            creatorScore
+          };
+        } catch (e) {
+          console.error('Failed to decode challenge:', e);
+          return null;
+        }
+      };
+      
+      const createChallenge = async () => {
+        const code = encodeChallenge();
+        const name = playerName || 'Someone';
+        const correct = results.filter(r => r.isCorrect).length;
+        const total = results.length;
+        const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+        
+        const challengeText = `🎯 ${name} challenges you!
+Score ${percentage}% to win!
+Code: ${code}`;
+        
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: 'Math Challenge',
+              text: challengeText
+            });
+          } catch (e) {
+            if (e.name !== 'AbortError') {
+              copyToClipboard(challengeText);
+            }
+          }
+        } else {
+          copyToClipboard(challengeText);
+        }
+      };
+      
+      const startChallenge = () => {
+        const decoded = decodeChallenge(challengeCodeInput.trim());
+        
+        if (!decoded) {
+          setShareMessage('Invalid challenge code! 😕');
+          setTimeout(() => setShareMessage(''), 3000);
+          return;
+        }
+        
+        // Set up the challenge
+        setChallengeMode(true);
+        setChallengeCreator(decoded.creator);
+        setChallengeScore(decoded.creatorScore);
+        setChallengeSeed(decoded.seed);
+        setQuestions(decoded.questions);
+        setQuestionCount(decoded.questions.length);
+        setMode('questions');
+        
+        // Set operations and digits from decoded challenge
+        setOperations(decoded.ops);
+        setDigits(decoded.digs);
+        
+        setCurrentIndex(0);
+        setResults([]);
+        setAnswer('');
+        setStartTime(Date.now());
+        setEndTime(null);
+        setStreak(0);
+        setMaxStreak(0);
+        setPoints(0);
+        setFeedback(null);
+        setShowChallengeInput(false);
+        setChallengeCodeInput('');
+        setAdaptiveDifficulty(false); // Disable adaptive for fair comparison
+        
+        setStage('practicing');
+      };
+      
+      const retryMissed = () => {
+        const missed = results.filter(r => !r.isCorrect);
+        if (missed.length === 0) return;
+        
+        const newQuestions = missed.map(q => ({
+          num1: q.num1,
+          num2: q.num2,
+          symbol: q.symbol,
+          correctAnswer: q.correctAnswer,
+          operation: q.operation,
+          digits: q.digits
+        }));
+        
+        // Pad with more questions if needed
+        while (newQuestions.length < 5) {
+          newQuestions.push(generateQuestion(digits));
+        }
+        
+        setQuestions(newQuestions);
+        setQuestionCount(newQuestions.length);
+        setMode('questions');
+        setCurrentIndex(0);
+        setResults([]);
+        setAnswer('');
+        setStartTime(Date.now());
+        setEndTime(null);
+        setStreak(0);
+        setMaxStreak(0);
+        setPoints(0);
+        setFeedback(null);
+        setStage('practicing');
+      };
+
+      // History view
+      if (showHistory) {
+        const history = getHistory();
+        const recentHistory = history.slice(-20).reverse();
+        
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-indigo-400 via-purple-300 to-pink-200 p-6">
+            <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-2xl p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold text-purple-600">📊 Your Progress</h1>
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
+                >
+                  Back
+                </button>
+              </div>
+              
+              {recentHistory.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No practice sessions yet. Start practicing to see your progress!</p>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {recentHistory.map((session, i) => (
+                    <div key={i} className="bg-gray-50 rounded-lg p-4 flex justify-between items-center">
+                      <div>
+                        <div className="font-semibold text-gray-700">
+                          {session.operations.map(op => op.charAt(0).toUpperCase() + op.slice(1)).join(', ')}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {new Date(session.date).toLocaleDateString()} • {session.total} questions
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-2xl font-bold ${session.percentage >= 70 ? 'text-green-500' : session.percentage >= 50 ? 'text-yellow-500' : 'text-red-500'}`}>
+                          {session.percentage}%
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          🔥 {session.maxStreak} streak
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {history.length > 0 && (
+                <div className="mt-6 pt-6 border-t">
+                  <h3 className="font-semibold text-gray-700 mb-3">All-Time Stats</h3>
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="bg-purple-100 rounded-lg p-3">
+                      <div className="text-2xl font-bold text-purple-600">{history.length}</div>
+                      <div className="text-sm text-gray-600">Sessions</div>
+                    </div>
+                    <div className="bg-green-100 rounded-lg p-3">
+                      <div className="text-2xl font-bold text-green-600">
+                        {Math.round(history.reduce((acc, h) => acc + h.percentage, 0) / history.length)}%
+                      </div>
+                      <div className="text-sm text-gray-600">Avg Score</div>
+                    </div>
+                    <div className="bg-orange-100 rounded-lg p-3">
+                      <div className="text-2xl font-bold text-orange-600">
+                        {Math.max(...history.map(h => h.maxStreak))}
+                      </div>
+                      <div className="text-sm text-gray-600">Best Streak</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      // Countdown screen
+      if (stage === 'countdown') {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-blue-400 via-purple-300 to-pink-200 flex items-center justify-center">
+            <div className="text-center">
+              <div 
+                key={countdown}
+                className="text-9xl font-bold text-white countdown-pulse"
+                style={{ textShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+              >
+                {countdown === 0 ? 'GO!' : countdown}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (stage === 'setup') {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-purple-400 via-pink-300 to-yellow-200 p-6">
+            <div className="max-w-xl mx-auto bg-white rounded-3xl shadow-2xl p-8">
+              <div className="flex justify-between items-center mb-8">
+                <h1 className="text-4xl font-bold text-purple-600">🧮 Math Trainer</h1>
+                <button
+                  onClick={() => setShowHistory(true)}
+                  className="px-4 py-2 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200 font-semibold"
+                >
+                  📊 Progress
+                </button>
+              </div>
+              
+              <div className="mb-8">
+                <h2 className="text-xl font-semibold text-gray-700 mb-4">What do you want to practice?</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    { key: 'addition', symbol: '+', color: 'bg-green-100 border-green-400 text-green-700' },
+                    { key: 'subtraction', symbol: '−', color: 'bg-blue-100 border-blue-400 text-blue-700' },
+                    { key: 'multiplication', symbol: '×', color: 'bg-orange-100 border-orange-400 text-orange-700' },
+                    { key: 'division', symbol: '÷', color: 'bg-pink-100 border-pink-400 text-pink-700' }
+                  ].map(({ key, symbol, color }) => (
+                    <div key={key} className="space-y-2">
+                      <button
+                        onClick={() => setOperations(o => ({ ...o, [key]: !o[key] }))}
+                        className={`w-full p-4 rounded-xl border-3 text-lg font-bold transition-all ${
+                          operations[key] 
+                            ? `${color} border-2 shadow-md scale-105` 
+                            : 'bg-gray-50 border-2 border-gray-200 text-gray-400'
+                        }`}
+                      >
+                        {symbol} {key.charAt(0).toUpperCase() + key.slice(1)}
+                      </button>
+                      {operations[key] && key !== 'multiplication' && (
+                        <div className="flex justify-center gap-2">
+                          {[1, 2, 3].map(d => (
+                            <button
+                              key={d}
+                              onClick={() => setDigits(dig => ({ ...dig, [key]: d }))}
+                              className={`px-3 py-1 rounded-full text-sm font-medium transition-all ${
+                                digits[key] === d
+                                  ? 'bg-purple-500 text-white'
+                                  : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                              }`}
+                            >
+                              {d} digit{d > 1 ? 's' : ''}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {operations[key] && key === 'multiplication' && (
+                        <div className="flex flex-wrap justify-center gap-2">
+                          {[
+                            { value: '1x1', label: '1×1' },
+                            { value: '2x1', label: '2×1' },
+                            { value: '3x1', label: '3×1' },
+                            { value: '2x2', label: '2×2' }
+                          ].map(({ value, label }) => (
+                            <button
+                              key={value}
+                              onClick={() => setDigits(dig => ({ ...dig, multiplication: value }))}
+                              className={`px-3 py-1 rounded-full text-sm font-medium transition-all ${
+                                digits.multiplication === value
+                                  ? 'bg-purple-500 text-white'
+                                  : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="mb-8">
+                <h2 className="text-xl font-semibold text-gray-700 mb-4">Practice mode</h2>
+                <div className="flex gap-4 mb-4">
+                  <button
+                    onClick={() => setMode('questions')}
+                    className={`flex-1 p-4 rounded-xl border-2 font-semibold transition-all ${
+                      mode === 'questions'
+                        ? 'bg-purple-100 border-purple-400 text-purple-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-400'
+                    }`}
+                  >
+                    📝 Questions
+                  </button>
+                  <button
+                    onClick={() => setMode('time')}
+                    className={`flex-1 p-4 rounded-xl border-2 font-semibold transition-all ${
+                      mode === 'time'
+                        ? 'bg-purple-100 border-purple-400 text-purple-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-400'
+                    }`}
+                  >
+                    ⏱️ Timed
+                  </button>
+                </div>
+                
+                {mode === 'questions' ? (
+                  <div className="flex items-center justify-center gap-4">
+                    <span className="text-gray-600">Number of questions:</span>
+                    <select
+                      value={questionCount}
+                      onChange={(e) => setQuestionCount(parseInt(e.target.value))}
+                      className="px-4 py-2 rounded-lg border-2 border-purple-300 text-purple-700 font-semibold"
+                    >
+                      {[5, 10, 15, 20, 25, 30, 50].map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-4">
+                    <span className="text-gray-600">Time limit:</span>
+                    <select
+                      value={timeLimit}
+                      onChange={(e) => setTimeLimit(parseInt(e.target.value))}
+                      className="px-4 py-2 rounded-lg border-2 border-purple-300 text-purple-700 font-semibold"
+                    >
+                      {[30, 60, 90, 120, 180, 300].map(s => (
+                        <option key={s} value={s}>{s < 60 ? `${s} seconds` : `${s / 60} minute${s > 60 ? 's' : ''}`}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              
+              <div className="mb-8 flex flex-wrap gap-4 justify-center">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={adaptiveDifficulty}
+                    onChange={(e) => setAdaptiveDifficulty(e.target.checked)}
+                    className="w-5 h-5 rounded"
+                  />
+                  <span className="text-gray-600">🎯 Adaptive difficulty</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={soundEnabled}
+                    onChange={(e) => setSoundEnabled(e.target.checked)}
+                    className="w-5 h-5 rounded"
+                  />
+                  <span className="text-gray-600">🔊 Sound effects</span>
+                </label>
+              </div>
+              
+              {/* Name input for challenges */}
+              <div className="mb-6">
+                <div className="flex items-center justify-center gap-3">
+                  <span className="text-gray-600">Your name:</span>
+                  <input
+                    type="text"
+                    value={playerName}
+                    onChange={(e) => setPlayerName(e.target.value)}
+                    placeholder="Enter your name"
+                    className="px-4 py-2 rounded-lg border-2 border-purple-300 text-purple-700 font-semibold w-48"
+                    maxLength={20}
+                  />
+                </div>
+              </div>
+              
+              <button
+                onClick={startCountdown}
+                className="w-full py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-102 active:scale-98"
+              >
+                Start Practice! 🚀
+              </button>
+              
+              {/* Challenge Section */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <button
+                  onClick={() => setShowChallengeInput(!showChallengeInput)}
+                  className="w-full py-3 bg-gradient-to-r from-yellow-400 to-orange-400 text-white text-lg font-bold rounded-xl shadow-md hover:shadow-lg transition-all"
+                >
+                  🎯 Got a Challenge Code?
+                </button>
+                
+                {showChallengeInput && (
+                  <div className="mt-4 p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
+                    <p className="text-gray-600 text-sm mb-3">Paste a challenge code from a friend to compete against their score!</p>
+                    <textarea
+                      value={challengeCodeInput}
+                      onChange={(e) => setChallengeCodeInput(e.target.value)}
+                      placeholder="Paste challenge code here..."
+                      className="w-full p-3 rounded-lg border-2 border-yellow-300 text-gray-700 font-mono text-sm h-20 resize-none"
+                    />
+                    <button
+                      onClick={startChallenge}
+                      disabled={!challengeCodeInput.trim()}
+                      className="mt-3 w-full py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Start Challenge! ⚔️
+                    </button>
+                    {shareMessage && (
+                      <div className="mt-2 text-center text-red-500 font-semibold">
+                        {shareMessage}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (stage === 'practicing') {
+        const currentQuestion = questions[currentIndex];
+        const progress = mode === 'questions' 
+          ? ((currentIndex) / questionCount) * 100
+          : ((timeLimit - timeRemaining) / timeLimit) * 100;
+        
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-blue-400 via-purple-300 to-pink-200 p-6 flex flex-col">
+            {/* Challenge banner */}
+            {challengeMode && (
+              <div className="max-w-xl mx-auto w-full mb-4">
+                <div className="bg-yellow-400 text-yellow-900 rounded-xl px-4 py-2 text-center font-bold">
+                  ⚔️ Challenge from {challengeCreator}! Beat their {challengeScore}%!
+                </div>
+              </div>
+            )}
+            
+            <div className="max-w-xl mx-auto w-full">
+              <div className="flex justify-between items-center mb-4 text-white">
+                <span className="text-lg font-semibold">
+                  {mode === 'questions' 
+                    ? `Question ${currentIndex + 1} of ${questionCount}`
+                    : `${results.length} answered`
+                  }
+                </span>
+                <div className="flex items-center gap-4">
+                  <span className={`text-lg font-semibold ${streak >= 3 ? 'streak-pulse' : ''}`}>
+                    🔥 {streak}
+                  </span>
+                  <span className="text-lg font-semibold">
+                    ⭐ {points}
+                  </span>
+                </div>
+                <span className="text-lg font-semibold">
+                  {mode === 'time' 
+                    ? `⏱️ ${Math.floor(timeRemaining / 60)}:${(timeRemaining % 60).toString().padStart(2, '0')}`
+                    : `✓ ${results.filter(r => r.isCorrect).length}`
+                  }
+                </span>
+              </div>
+              
+              <div className="w-full bg-white/30 rounded-full h-3 mb-8">
+                <div 
+                  className="bg-white rounded-full h-3 transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+            
+            <div className="flex-1 flex items-center justify-center">
+              <div className={`bg-white rounded-3xl shadow-2xl p-12 text-center transition-all ${
+                feedback === 'correct' ? 'correct-flash' : feedback === 'wrong' ? 'wrong-shake' : ''
+              }`}>
+                {streak >= 5 && (
+                  <div className="text-orange-500 font-bold mb-2 bounce-in">
+                    🔥 {streak} STREAK! +{streak * 5} bonus points
+                  </div>
+                )}
+                
+                <div className="text-6xl font-bold text-gray-800 mb-8">
+                  {currentQuestion.num1} {currentQuestion.symbol} {currentQuestion.num2} = ?
+                </div>
+                
+                <div>
+                  <input
+                    ref={inputRef}
+                    type="number"
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    disabled={feedback !== null}
+                    className="w-48 text-center text-4xl font-bold p-4 border-4 border-purple-300 rounded-xl focus:border-purple-500 focus:outline-none disabled:bg-gray-100"
+                    placeholder="?"
+                  />
+                  <div className="flex gap-4 justify-center mt-6">
+                    <button
+                      type="button"
+                      onClick={skipQuestion}
+                      disabled={feedback !== null}
+                      className="px-6 py-3 bg-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-300 transition-all disabled:opacity-50"
+                    >
+                      Skip →
+                    </button>
+                    <button
+                      type="button"
+                      onClick={submitAnswer}
+                      disabled={answer === '' || feedback !== null}
+                      className="px-8 py-3 bg-gradient-to-r from-green-400 to-green-500 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Submit ✓
+                    </button>
+                  </div>
+                </div>
+                
+                {feedback && (
+                  <div className={`mt-4 text-2xl font-bold bounce-in ${feedback === 'correct' ? 'text-green-500' : 'text-red-500'}`}>
+                    {feedback === 'correct' ? '✓ Correct!' : `✗ ${currentQuestion.correctAnswer}`}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <button
+              onClick={() => finishPractice()}
+              className="mt-8 mx-auto px-6 py-2 bg-white/30 text-white font-semibold rounded-lg hover:bg-white/40 transition-all"
+            >
+              End Practice Early
+            </button>
+          </div>
+        );
+      }
+
+      if (stage === 'results') {
+        const correct = results.filter(r => r.isCorrect).length;
+        const total = results.length;
+        const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+        const { grade, emoji, message } = getGrade(percentage);
+        const timeTaken = endTime - startTime;
+        const missedCount = results.filter(r => !r.isCorrect).length;
+        
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-yellow-300 via-orange-200 to-pink-300 p-6">
+            {showConfetti && <Confetti />}
+            
+            <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-2xl p-8">
+              <div className="text-center mb-8">
+                <div className="text-8xl mb-4 bounce-in">{emoji}</div>
+                <h1 className="text-4xl font-bold text-gray-800 mb-2">Practice Complete!</h1>
+                <p className="text-xl text-gray-600">{message}</p>
+              </div>
+              
+              {/* Challenge Result Comparison */}
+              {challengeMode && (
+                <div className={`mb-6 p-4 rounded-2xl text-center ${
+                  percentage > challengeScore 
+                    ? 'bg-green-100 border-2 border-green-400' 
+                    : percentage === challengeScore 
+                    ? 'bg-yellow-100 border-2 border-yellow-400'
+                    : 'bg-red-100 border-2 border-red-400'
+                }`}>
+                  <div className="text-2xl font-bold mb-2">
+                    {percentage > challengeScore 
+                      ? `🏆 You WIN! You beat ${challengeCreator}!` 
+                      : percentage === challengeScore 
+                      ? `🤝 It's a TIE with ${challengeCreator}!`
+                      : `😅 ${challengeCreator} wins this time!`
+                    }
+                  </div>
+                  <div className="flex justify-center gap-8 text-lg">
+                    <div>
+                      <span className="text-gray-600">You: </span>
+                      <span className="font-bold text-purple-600">{percentage}%</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">{challengeCreator}: </span>
+                      <span className="font-bold text-orange-600">{challengeScore}%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="bg-purple-100 rounded-2xl p-4 text-center">
+                  <div className="text-4xl font-bold text-purple-600">{grade}</div>
+                  <div className="text-gray-600 mt-1">Grade</div>
+                </div>
+                <div className="bg-green-100 rounded-2xl p-4 text-center">
+                  <div className="text-3xl font-bold text-green-600">{correct}/{total}</div>
+                  <div className="text-gray-600 mt-1">Correct</div>
+                </div>
+                <div className="bg-orange-100 rounded-2xl p-4 text-center">
+                  <div className="text-3xl font-bold text-orange-600">🔥 {maxStreak}</div>
+                  <div className="text-gray-600 mt-1">Best Streak</div>
+                </div>
+                <div className="bg-blue-100 rounded-2xl p-4 text-center">
+                  <div className="text-3xl font-bold text-blue-600">{formatTime(timeTaken)}</div>
+                  <div className="text-gray-600 mt-1">Time</div>
+                </div>
+              </div>
+              
+              <div className="text-center mb-6">
+                <div className="flex items-center justify-center gap-4 mb-2">
+                  <div className="text-6xl font-bold text-gray-800">{percentage}%</div>
+                  <div className="text-3xl font-bold text-yellow-500">⭐ {points} pts</div>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-4 mt-4">
+                  <div 
+                    className={`h-4 rounded-full transition-all duration-500 ${
+                      percentage >= 70 ? 'bg-green-500' : percentage >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${percentage}%` }}
+                  />
+                </div>
+              </div>
+              
+              {results.some(r => !r.isCorrect) && (
+                <div className="mb-8">
+                  <h3 className="text-lg font-semibold text-gray-700 mb-3">Questions to review:</h3>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {results.filter(r => !r.isCorrect).map((r, i) => (
+                      <div key={i} className="bg-red-50 border border-red-200 rounded-lg p-3 flex justify-between items-center">
+                        <span className="text-gray-700">
+                          {r.num1} {r.symbol} {r.num2} = {r.skipped ? <span className="text-gray-400">skipped</span> : <span className="text-red-500 line-through">{r.userAnswer}</span>}
+                        </span>
+                        <span className="text-green-600 font-bold">
+                          Correct: {r.correctAnswer}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Challenge a Friend Section */}
+              <div className="mb-6 p-4 bg-gradient-to-r from-yellow-100 to-orange-100 rounded-2xl">
+                <h3 className="text-lg font-semibold text-gray-700 mb-3 text-center">⚔️ Challenge a Friend!</h3>
+                <p className="text-gray-600 text-sm text-center mb-3">Send these exact questions to someone and see if they can beat your score!</p>
+                <button
+                  onClick={createChallenge}
+                  className="w-full py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all"
+                >
+                  🎯 Create Challenge Code
+                </button>
+              </div>
+              
+              {/* Share Section */}
+              <div className="mb-8 p-4 bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl">
+                <h3 className="text-lg font-semibold text-gray-700 mb-3 text-center">Share Your Results! 🎉</h3>
+                <div className="flex flex-wrap gap-3 justify-center">
+                  <button
+                    onClick={shareResults}
+                    className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+                  >
+                    📤 Share
+                  </button>
+                  <button
+                    onClick={downloadShareCard}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+                  >
+                    🖼️ Save Image
+                  </button>
+                </div>
+                {shareMessage && (
+                  <div className="mt-3 text-center text-green-600 font-semibold bounce-in">
+                    {shareMessage}
+                  </div>
+                )}
+                
+                {/* Hidden ref for share card dimensions */}
+                <div ref={shareCardRef} style={{position: 'absolute', left: '-9999px'}} />
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                  onClick={restart}
+                  className="flex-1 py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all"
+                >
+                  New Practice 🔄
+                </button>
+                {missedCount > 0 && (
+                  <button
+                    onClick={retryMissed}
+                    className="flex-1 py-4 bg-gradient-to-r from-orange-400 to-red-400 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all"
+                  >
+                    Retry Missed ({missedCount}) 🎯
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+      
+      return null;
+    }
+
+    ReactDOM.render(<MathTrainer />, document.getElementById('root'));
+  </script>
+</body>
+</html>
