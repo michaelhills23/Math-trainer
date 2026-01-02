@@ -192,6 +192,15 @@
       return bests;
     };
 
+    const VERSION = 'v2.9';
+    
+    // Version display component
+    const VersionBadge = () => (
+      <div className="fixed bottom-2 right-2 text-xs text-gray-500 z-50">
+        {VERSION}
+      </div>
+    );
+
     function MathTrainer() {
       const [stage, setStage] = useState('setup');
       const [operations, setOperations] = useState({
@@ -1671,7 +1680,13 @@ ${challengeUrl}`;
       return null;
     }
 
-    ReactDOM.render(<MathTrainer />, document.getElementById('root'));
+    ReactDOM.render(
+      <>
+        <MathTrainer />
+        <VersionBadge />
+      </>,
+      document.getElementById('root')
+    );
   </script>
 </body>
 </html>
