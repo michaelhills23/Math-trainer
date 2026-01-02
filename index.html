@@ -233,6 +233,7 @@
       const [challengeMode, setChallengeMode] = useState(false);
       const [challengeCreator, setChallengeCreator] = useState('');
       const [challengeScore, setChallengeScore] = useState(null);
+      const [challengeTime, setChallengeTime] = useState(null);
       const [showChallengeInput, setShowChallengeInput] = useState(false);
       const [challengeCodeInput, setChallengeCodeInput] = useState('');
       const [playerName, setPlayerName] = useState('');
@@ -603,6 +604,7 @@
         setChallengeMode(false);
         setChallengeCreator('');
         setChallengeScore(null);
+        setChallengeTime(null);
       };
       
       const getShareText = () => {
@@ -816,13 +818,15 @@ Beat my score! ${challengeUrl}`;
         return questions;
       };
       
-      // Encode: score-seed-count-ops-digits
+      // Encode: score.seed.count.ops.digits.time
       // ops: bitmask (add=1, sub=2, mul=4, div=8)
       // digits: packed as add*1 + sub*4 + mul*16 + div*64 (each 0-3)
+      // time: in seconds (base36)
       const encodeChallenge = () => {
         const correct = results.filter(r => r.isCorrect).length;
         const total = results.length;
         const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+        const timeTaken = Math.round((endTime - startTime) / 1000); // seconds
         
         const opBits = (operations.addition ? 1 : 0) | 
                        (operations.subtraction ? 2 : 0) | 
@@ -838,22 +842,23 @@ Beat my score! ${challengeUrl}`;
                             (multModeNum * 16) + 
                             ((digits.division - 1) * 64);
         
-        // Format: score.seed.count.ops.digits (all base36)
-        return `${percentage.toString(36)}.${challengeSeed.toString(36)}.${total.toString(36)}.${opBits.toString(36)}.${digitsPacked.toString(36)}`;
+        // Format: score.seed.count.ops.digits.time (all base36)
+        return `${percentage.toString(36)}.${challengeSeed.toString(36)}.${total.toString(36)}.${opBits.toString(36)}.${digitsPacked.toString(36)}.${timeTaken.toString(36)}`;
       };
       
       const decodeChallenge = (code) => {
         try {
           const parts = code.split('.');
-          if (parts.length !== 5) throw new Error('Invalid format');
+          if (parts.length < 5 || parts.length > 6) throw new Error('Invalid format');
           
-          const [scoreStr, seedStr, countStr, opsStr, digitsStr] = parts;
+          const [scoreStr, seedStr, countStr, opsStr, digitsStr, timeStr] = parts;
           
           const creatorScore = parseInt(scoreStr, 36);
           const seed = parseInt(seedStr, 36);
           const count = parseInt(countStr, 36);
           const opBits = parseInt(opsStr, 36);
           const digitsPacked = parseInt(digitsStr, 36);
+          const creatorTime = timeStr ? parseInt(timeStr, 36) : null; // seconds
           
           const ops = {
             addition: !!(opBits & 1),
@@ -881,7 +886,8 @@ Beat my score! ${challengeUrl}`;
             digs,
             mode: 'questions',
             creator: 'Friend',
-            creatorScore
+            creatorScore,
+            creatorTime
           };
         } catch (e) {
           console.error('Failed to decode challenge:', e);
@@ -932,6 +938,7 @@ ${challengeUrl}`;
         setChallengeMode(true);
         setChallengeCreator(decoded.creator);
         setChallengeScore(decoded.creatorScore);
+        setChallengeTime(decoded.creatorTime);
         setChallengeSeed(decoded.seed);
         setQuestions(decoded.questions);
         setQuestionCount(decoded.questions.length);
@@ -1088,12 +1095,18 @@ ${challengeUrl}`;
               
               {isValid ? (
                 <>
-                  <p className="text-xl text-gray-600 mb-6">
+                  <p className="text-xl text-gray-600 mb-2">
                     Can you beat <span className="font-bold text-orange-600">{decoded.creatorScore}%</span>?
                   </p>
-                  <p className="text-gray-500 mb-6">
+                  <p className="text-gray-500 mb-4">
                     {decoded.questions.length} questions
+                    {decoded.creatorTime && ` • ${Math.floor(decoded.creatorTime/60)}:${(decoded.creatorTime%60).toString().padStart(2,'0')}`}
                   </p>
+                  {decoded.creatorScore === 100 && decoded.creatorTime && (
+                    <p className="text-sm text-orange-500 mb-4">
+                      Perfect score! Beat their time to win!
+                    </p>
+                  )}
                   
                   <div className="mb-6">
                     <label className="text-gray-600 block mb-2">Your name:</label>
@@ -1477,7 +1490,29 @@ ${challengeUrl}`;
         const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
         const { grade, emoji, message } = getGrade(percentage);
         const timeTaken = endTime - startTime;
+        const timeTakenSeconds = Math.round(timeTaken / 1000);
         const missedCount = results.filter(r => !r.isCorrect).length;
+        
+        // Determine challenge winner (score first, then time as tiebreaker)
+        let challengeResult = null;
+        if (challengeMode) {
+          if (percentage > challengeScore) {
+            challengeResult = 'win';
+          } else if (percentage < challengeScore) {
+            challengeResult = 'lose';
+          } else if (challengeTime !== null) {
+            // Tied on score, compare times
+            if (timeTakenSeconds < challengeTime) {
+              challengeResult = 'win-time';
+            } else if (timeTakenSeconds > challengeTime) {
+              challengeResult = 'lose-time';
+            } else {
+              challengeResult = 'tie';
+            }
+          } else {
+            challengeResult = 'tie';
+          }
+        }
         
         return (
           <div className="min-h-screen bg-gradient-to-br from-yellow-300 via-orange-200 to-pink-300 p-6">
@@ -1493,28 +1528,29 @@ ${challengeUrl}`;
               {/* Challenge Result Comparison */}
               {challengeMode && (
                 <div className={`mb-6 p-4 rounded-2xl text-center ${
-                  percentage > challengeScore 
+                  challengeResult === 'win' || challengeResult === 'win-time'
                     ? 'bg-green-100 border-2 border-green-400' 
-                    : percentage === challengeScore 
+                    : challengeResult === 'tie'
                     ? 'bg-yellow-100 border-2 border-yellow-400'
                     : 'bg-red-100 border-2 border-red-400'
                 }`}>
                   <div className="text-2xl font-bold mb-2">
-                    {percentage > challengeScore 
-                      ? `🏆 You WIN! You beat ${challengeCreator}!` 
-                      : percentage === challengeScore 
-                      ? `🤝 It's a TIE with ${challengeCreator}!`
-                      : `😅 ${challengeCreator} wins this time!`
-                    }
+                    {challengeResult === 'win' && `🏆 You WIN! You beat ${challengeCreator}!`}
+                    {challengeResult === 'win-time' && `🏆 You WIN! Same score but faster!`}
+                    {challengeResult === 'tie' && `🤝 It's a TIE with ${challengeCreator}!`}
+                    {challengeResult === 'lose-time' && `😅 ${challengeCreator} wins - same score but faster!`}
+                    {challengeResult === 'lose' && `😅 ${challengeCreator} wins this time!`}
                   </div>
-                  <div className="flex justify-center gap-8 text-lg">
+                  <div className="flex justify-center gap-6 text-lg flex-wrap">
                     <div>
                       <span className="text-gray-600">You: </span>
                       <span className="font-bold text-purple-600">{percentage}%</span>
+                      <span className="text-gray-400 text-sm ml-1">({formatTime(timeTaken)})</span>
                     </div>
                     <div>
                       <span className="text-gray-600">{challengeCreator}: </span>
                       <span className="font-bold text-orange-600">{challengeScore}%</span>
+                      {challengeTime && <span className="text-gray-400 text-sm ml-1">({Math.floor(challengeTime/60)}:{(challengeTime%60).toString().padStart(2,'0')})</span>}
                     </div>
                   </div>
                 </div>
