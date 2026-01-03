@@ -260,7 +260,7 @@
       }
     };
 
-    const VERSION = 'v4.01';
+    const VERSION = 'v4.02';
     
     // Version Badge Component
     const VersionBadge = () => (
@@ -424,6 +424,18 @@
       const [challengeCodeInput, setChallengeCodeInput] = useState('');
       const [playerName, setPlayerName] = useState('');
       const [urlChallengeCode, setUrlChallengeCode] = useState(null);
+	  
+	  // --- NEW STATE FOR PREVIEW ---
+      const [challengePreview, setChallengePreview] = useState(null);
+
+      // Effect to fetch preview data when URL code is present
+      useEffect(() => {
+        if (urlChallengeCode && isShortChallengeCode(urlChallengeCode)) {
+          fetchChallengeDoc(urlChallengeCode).then(doc => {
+            if (doc) setChallengePreview(doc);
+          });
+        }
+      }, [urlChallengeCode]);
       
       // Refs
       const shareCardRef = useRef(null);
@@ -1479,17 +1491,7 @@ const startChallengeFromCode = async (code) => {
         );
       }
 
-      // --- NEW STATE FOR PREVIEW ---
-      const [challengePreview, setChallengePreview] = useState(null);
 
-      // Effect to fetch preview data when URL code is present
-      useEffect(() => {
-        if (urlChallengeCode && isShortChallengeCode(urlChallengeCode)) {
-          fetchChallengeDoc(urlChallengeCode).then(doc => {
-            if (doc) setChallengePreview(doc);
-          });
-        }
-      }, [urlChallengeCode]);
 
       // --- RENDERING: CHALLENGE LANDING PAGE ---
       if (urlChallengeCode && stage === 'setup') {
