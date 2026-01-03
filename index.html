@@ -260,7 +260,7 @@
       }
     };
 
-    const VERSION = 'v4.0';
+    const VERSION = 'v4.01';
     
     // Version Badge Component
     const VersionBadge = () => (
@@ -1020,6 +1020,27 @@
         let code = '';
         for (let i = 0; i < length; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
         return code;
+      };
+	  
+	  const createChallengeDoc = async (payload) => {
+        const challengesRef = db.collection('challenges');
+        // Try up to 5 times to avoid ID collision
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const code = generateChallengeCode(6);
+          const docRef = challengesRef.doc(code);
+          const existing = await docRef.get();
+          if (existing.exists) continue;
+
+          await docRef.set({
+            ...payload,
+            plays: 0,
+            isPublic: true,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            expiresAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
+          });
+          return code;
+        }
+        throw new Error('Could not generate a unique challenge code. Please try again.');
       };
 
 const createChallenge = async (sessionOverride = null) => {
