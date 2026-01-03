@@ -281,7 +281,7 @@
     };
 
 
-    const VERSION = 'v3.2';
+    const VERSION = 'v3.5';
     
     // Version display component
     const VersionBadge = () => (
@@ -448,6 +448,8 @@
 
       const [showShareCard, setShowShareCard] = useState(false);
       const [shareMessage, setShareMessage] = useState('');
+      const [generatedChallengeCode, setGeneratedChallengeCode] = useState(null);
+
       const [challengeMode, setChallengeMode] = useState(false);
       const [challengeCreator, setChallengeCreator] = useState('');
       const [challengeScore, setChallengeScore] = useState(null);
@@ -652,7 +654,7 @@
             questionCount: total,
             seed: challengeSeed,
             adaptiveDifficulty,
-            challengeCode: encodeChallengeFromData(percentage, challengeSeed, total, operations, currentDigits, Math.round(timeTaken / 1000)),
+            challengeCode: (generatedChallengeCode || null),
             correct,
             total,
             percentage,
@@ -1160,87 +1162,241 @@ Beat my score! ${challengeUrl}`;
         }
       };
       
-      const createChallenge = async () => {
-        const code = encodeChallenge();
-        const name = user?.displayName || playerName || 'Someone';
-        const correct = results.filter(r => r.isCorrect).length;
-        const total = results.length;
-        const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
-        const challengeUrl = `https://michaelhills23.github.io/Math-trainer/?c=${code}`;
-        
-        const challengeText = `🎯 ${name} challenges you!
+            // Short-code challenge system (6-char base62 codes stored in Firestore)
+      const generateChallengeCode = (length = 6) => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let code = '';
+        for (let i = 0; i < length; i++) {
+          code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return code;
+      };
 
-Score ${percentage}% to win!
+      const createChallengeDoc = async (payload) => {
+        const challengesRef = db.collection('challenges');
+
+        // Try a few times to avoid collisions (extremely unlikely)
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const code = generateChallengeCode(6);
+          const docRef = challengesRef.doc(code);
+          const existing = await docRef.get();
+          if (existing.exists) continue;
+
+          await docRef.set({
+            ...payload,
+            plays: 0,
+            isPublic: true,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            expiresAt: firebase.firestore.Timestamp.fromDate(
+              new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+            )
+          });
+
+          return code;
+        }
+
+        throw new Error('Could not generate a unique challenge code. Please try again.');
+      };
+
+      const createChallenge = async (sessionOverride = null) => {
+        try {
+          const name = user?.displayName || playerName || 'Someone';
+
+          // Pull data either from a past session (Progress) or the current run (Results)
+          const seed = Number(sessionOverride?.seed ?? challengeSeed);
+          const ops = sessionOverride?._opsObj ?? sessionOverride?.operations ?? operations;
+          const digs = sessionOverride?._digits ?? sessionOverride?.digits ?? digits;
+          const count = Number(sessionOverride?.questionCount ?? sessionOverride?._total ?? questionCount ?? 20);
+
+          // Creator performance
+          const creatorScore =
+            Number(sessionOverride?._pct ?? sessionOverride?.score ?? score ?? 0);
+          const creatorTime =
+            Number(sessionOverride?._timeSeconds ?? sessionOverride?.time ?? 0);
+
+          if (!seed || !ops || !digs || !count) {
+            setShareMessage('This session is missing challenge data (seed/settings).');
+            setTimeout(() => setShareMessage(''), 3000);
+            return;
+          }
+
+          const code = await createChallengeDoc({
+            ownerUserId: user?.uid || null,
+            sessionId: sessionOverride?.id || null,
+            creatorName: name,
+            creatorScore,
+            creatorTime,
+            seed,
+            operations: ops,
+            digits: digs,
+            questionCount: count,
+            generatorVersion: 1
+          });
+
+          const challengeUrl = buildChallengeUrl(code);
+          const challengeText =
+`🎯 ${name} challenges you!
+
+Code: ${code}
+
+Beat ${creatorScore}% to win!
 
 ${challengeUrl}`;
-        
-        if (navigator.share) {
-          try {
-            await navigator.share({
-              title: 'Math Challenge',
-              text: challengeText,
-              url: challengeUrl
-            });
-          } catch (e) {
-            if (e.name !== 'AbortError') {
-              copyToClipboard(challengeText);
+
+          if (navigator.share) {
+            try {
+              await navigator.share({
+                title: 'Math Challenge',
+                text: challengeText,
+                url: challengeUrl
+              });
+            } catch (e) {
+              if (e.name !== 'AbortError') {
+                await copyToClipboard(challengeText);
+                setShareMessage('Challenge copied to clipboard!');
+                setTimeout(() => setShareMessage(''), 2000);
+              }
             }
+          } else {
+            await copyToClipboard(challengeText);
+            setShareMessage('Challenge copied to clipboard!');
+            setTimeout(() => setShareMessage(''), 2000);
           }
-        } else {
-          copyToClipboard(challengeText);
-        }
-      };
-      
-      // Start challenge from a code (used by URL param and manual input)
-      const startChallengeFromCode = (code) => {
-        const decoded = decodeChallenge(code.trim());
-        
-        if (!decoded) {
-          return false;
-        }
-        
-        // Set up the challenge
-        setChallengeMode(true);
-        setChallengeCreator(decoded.creator);
-        setChallengeScore(decoded.creatorScore);
-        setChallengeTime(decoded.creatorTime);
-        setChallengeSeed(decoded.seed);
-        setQuestions(decoded.questions);
-        setQuestionCount(decoded.questions.length);
-        setMode('questions');
-        
-        // Set operations and digits from decoded challenge
-        setOperations(decoded.ops);
-        setDigits(decoded.digs);
-        
-        setCurrentIndex(0);
-        setResults([]);
-        setAnswer('');
-        setStartTime(Date.now());
-        setEndTime(null);
-        setStreak(0);
-        setMaxStreak(0);
-        setPoints(0);
-        setFeedback(null);
-        setShowChallengeInput(false);
-        setChallengeCodeInput('');
-        setAdaptiveDifficulty(false);
-        setUrlChallengeCode(null);
-        
-        // Clear URL parameter
-        window.history.replaceState({}, '', window.location.pathname);
-        
-        setStage('practicing');
-        return true;
-      };
-      
-      const startChallenge = () => {
-        if (!startChallengeFromCode(challengeCodeInput)) {
-          setShareMessage('Invalid challenge code! 😕');
+
+          // For the current run, also stash the code so it shows in saved session data
+          setGeneratedChallengeCode(code);
+
+          return { code, url: challengeUrl };
+        } catch (e) {
+          console.error('Failed to create challenge:', e);
+          setShareMessage('Could not create challenge. Please try again.');
           setTimeout(() => setShareMessage(''), 3000);
         }
       };
-      
+
+      // Start challenge from a code (used by URL param and manual input)
+const isShortChallengeCode = (c) => /^[A-Za-z0-9]{6}$/.test((c || '').trim());
+
+const fetchChallengeDoc = async (code) => {
+  const c = (code || '').trim();
+  if (!c) return null;
+  try {
+    const doc = await db.collection('challenges').doc(c).get();
+    if (!doc.exists) return null;
+    const data = doc.data() || {};
+    // Basic expiry guard
+    if (data.expiresAt && data.expiresAt.toDate && data.expiresAt.toDate() < new Date()) {
+      return null;
+    }
+    return { id: doc.id, ...data };
+  } catch (e) {
+    console.error('Failed to load challenge doc:', e);
+    return null;
+  }
+};
+
+const startChallengeFromCode = async (code) => {
+  let raw = (code || '').trim();
+  if (!raw) return false;
+
+  // Allow pasting a full URL containing ?c=XXXXXX
+  if (raw.includes('c=')) {
+    try {
+      const u = new URL(raw);
+      const c = u.searchParams.get('c');
+      if (c) raw = c.trim();
+    } catch (e) {
+      // Not a valid URL, fall through
+    }
+  }
+
+  // New short-code challenges live in Firestore
+  if (isShortChallengeCode(raw)) {
+    const ch = await fetchChallengeDoc(raw);
+    if (!ch) return false;
+
+    const ops = ch.operations || ch.ops || operations;
+    const digs = ch.digits || ch.digs || digits;
+    const count = Number(ch.questionCount || ch.count || 20);
+    const seed = Number(ch.seed);
+
+    if (!seed || !ops || !digs) return false;
+
+    const qs = generateQuestionsFromSeed(seed, count, ops, digs);
+    if (!qs.length) return false;
+
+    setChallengeMode(true);
+    setChallengeCreator(ch.creatorName || ch.creator || 'Friend');
+    setChallengeScore(Number(ch.creatorScore || ch.score || 0));
+    setChallengeTime(Number(ch.creatorTime || ch.time || 0));
+    setChallengeSeed(seed);
+
+    setOperations(ops);
+    setDigits(digs);
+
+    setQuestions(qs);
+    setQuestionCount(qs.length);
+    setMode('questions');
+
+    setCurrentIndex(0);
+    setScore(0);
+    setTotalCorrect(0);
+    setCurrentStreak(0);
+    setMaxStreak(0);
+    setPoints(0);
+    setFeedback(null);
+
+    // Clear URL parameter
+    window.history.replaceState({}, '', window.location.pathname);
+
+    setStage('practicing');
+
+    // Optional: increment plays (non-critical)
+    try {
+      db.collection('challenges').doc(raw).update({
+        plays: firebase.firestore.FieldValue.increment(1)
+      });
+    } catch (e) {}
+
+    return true;
+  }
+
+  // Backwards compatibility: old long challenge strings
+  const decoded = decodeChallenge(raw);
+  if (!decoded) return false;
+
+  setChallengeMode(true);
+  setChallengeCreator(decoded.creator);
+  setChallengeScore(decoded?.creatorScore);
+  setChallengeTime(decoded?.creatorTime);
+  setChallengeSeed(decoded.seed);
+  setQuestions(decoded?.questions);
+  setQuestionCount(decoded?.questions.length);
+  setMode('questions');
+  setOperations(decoded.ops);
+  setDigits(decoded.digs);
+
+  setCurrentIndex(0);
+  setScore(0);
+  setTotalCorrect(0);
+  setCurrentStreak(0);
+  setMaxStreak(0);
+  setPoints(0);
+  setFeedback(null);
+
+  window.history.replaceState({}, '', window.location.pathname);
+
+  setStage('practicing');
+  return true;
+};
+
+const startChallenge = async () => {
+  const ok = await startChallengeFromCode(challengeCodeInput);
+  if (!ok) {
+    setShareMessage('Invalid or expired challenge code! 😕');
+    setTimeout(() => setShareMessage(''), 3000);
+  }
+};      
       const retryMissed = () => {
         const missed = results.filter(r => !r.isCorrect);
         if (missed.length === 0) return;
@@ -1324,26 +1480,19 @@ ${challengeUrl}`;
         const toggleExpand = (id) => setExpandedSessionId(expandedSessionId === id ? null : id);
 
         const shareOrCopyChallenge = async (session) => {
-          if (!session._code || !session._url) return;
+  const hasSeed = session && (session.seed || session._seed);
+  if (!hasSeed) {
+    setProgressMessage('This session cannot be challenged (missing seed).');
+    setTimeout(() => setProgressMessage(''), 2500);
+    return;
+  }
 
-          const name = (user?.displayName || 'A friend');
-          const message = `🎯 ${name} challenges you!\n\nBeat ${session._pct}% to win!\n\n${session._url}`;
-
-          if (navigator.share) {
-            try {
-              await navigator.share({ title: 'Math Challenge', text: message, url: session._url });
-              setProgressMessage('Challenge shared!');
-              setTimeout(() => setProgressMessage(''), 2000);
-              return;
-            } catch (e) {
-              // fall through to copy
-            }
-          }
-
-          await copyText(session._url);
-          setProgressMessage('Challenge link copied!');
-          setTimeout(() => setProgressMessage(''), 2000);
-        };
+  const res = await createChallenge(session);
+  if (res && res.code) {
+    setProgressMessage(`Challenge created! Code: ${res.code}`);
+    setTimeout(() => setProgressMessage(''), 3000);
+  }
+};
 
         return (
           <div className="min-h-screen bg-gradient-to-br from-indigo-400 via-purple-300 to-pink-200 p-6">
@@ -1704,8 +1853,9 @@ ${challengeUrl}`;
 
       // Challenge URL landing screen
       if (urlChallengeCode && stage === 'setup') {
-        const decoded = decodeChallenge(urlChallengeCode);
-        const isValid = decoded !== null;
+        const isShort = isShortChallengeCode(urlChallengeCode);
+        const decoded = !isShort ? decodeChallenge(urlChallengeCode) : null;
+        const isValid = isShort || decoded !== null;
         
         return (
           <div className="min-h-screen bg-gradient-to-br from-yellow-400 via-orange-300 to-red-300 p-6 flex items-center justify-center">
@@ -1716,13 +1866,13 @@ ${challengeUrl}`;
               {isValid ? (
                 <>
                   <p className="text-xl text-gray-600 mb-2">
-                    Can you beat <span className="font-bold text-orange-600">{decoded.creatorScore}%</span>?
+                    Can you beat <span className="font-bold text-orange-600">{decoded?.creatorScore ?? 'their'}%</span>?
                   </p>
                   <p className="text-gray-500 mb-4">
-                    {decoded.questions.length} questions
-                    {decoded.creatorTime && ` • ${Math.floor(decoded.creatorTime/60)}:${(decoded.creatorTime%60).toString().padStart(2,'0')}`}
+                    {decoded?.questions.length} questions
+                    {decoded?.creatorTime && ` • ${Math.floor(decoded?.creatorTime/60)}:${(decoded?.creatorTime%60).toString().padStart(2,'0')}`}
                   </p>
-                  {decoded.creatorScore === 100 && decoded.creatorTime && (
+                  {decoded?.creatorScore === 100 && decoded?.creatorTime && (
                     <p className="text-sm text-orange-500 mb-4">
                       Perfect score! Beat their time to win!
                     </p>
@@ -2005,7 +2155,7 @@ ${challengeUrl}`;
                     <textarea
                       value={challengeCodeInput}
                       onChange={(e) => setChallengeCodeInput(e.target.value)}
-                      placeholder="Paste challenge code here..."
+                      placeholder="Enter 6-character code (or paste a link)..."
                       className="w-full p-3 rounded-lg border-2 border-yellow-300 text-gray-700 font-mono text-sm h-20 resize-none"
                     />
                     <button
