@@ -1,5013 +1,1711 @@
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
-
   <meta charset="UTF-8">
-
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <title>Math Trainer</title>
-
+  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-
   <script src="https://cdn.tailwindcss.com"></script>
-
   
-
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-
   
-
   <script>
-
-    // Firebase configuration
-
+    // ==========================================
+    // FIREBASE CONFIGURATION
+    // ==========================================
     const firebaseConfig = {
-
       apiKey: "AIzaSyDxsjBsocGP4PR_PkF-yWr8mnbbbUhWqpE",
-
       authDomain: "math-trainer-e07af.firebaseapp.com",
-
       projectId: "math-trainer-e07af",
-
       storageBucket: "math-trainer-e07af.firebasestorage.app",
-
       messagingSenderId: "1030178989240",
-
       appId: "1:1030178989240:web:045be46c8001e79330804d",
-
       measurementId: "G-HE7PPP36LP"
-
     };
-
     
-
-    // Initialize Firebase
-
+    // Initialize Firebase services
     firebase.initializeApp(firebaseConfig);
-
     const auth = firebase.auth();
-
     const db = firebase.firestore();
-
   </script>
-
   
-
   <style>
-
+    /* ==========================================
+       CUSTOM CSS ANIMATIONS
+       ========================================== */
     * { box-sizing: border-box; }
-
+    
+    /* Remove spinners from number inputs */
     input[type="number"]::-webkit-inner-spin-button,
-
     input[type="number"]::-webkit-outer-spin-button {
-
       -webkit-appearance: none;
-
       margin: 0;
-
     }
-
     input[type="number"] { -moz-appearance: textfield; }
-
     
-
+    /* Animations */
     @keyframes correct-flash {
-
       0% { background-color: #22c55e; }
-
       100% { background-color: white; }
-
     }
-
     @keyframes wrong-shake {
-
       0%, 100% { transform: translateX(0); }
-
       20%, 60% { transform: translateX(-10px); }
-
       40%, 80% { transform: translateX(10px); }
-
     }
-
     @keyframes streak-pulse {
-
       0%, 100% { transform: scale(1); }
-
       50% { transform: scale(1.2); }
-
     }
-
     @keyframes confetti-fall {
-
       0% { transform: translateY(-100%) rotate(0deg); opacity: 1; }
-
       100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-
     }
-
     @keyframes bounce-in {
-
       0% { transform: scale(0); }
-
       50% { transform: scale(1.2); }
-
       100% { transform: scale(1); }
-
     }
-
     @keyframes countdown-pulse {
-
       0% { transform: scale(0.5); opacity: 0; }
-
       50% { transform: scale(1.2); opacity: 1; }
-
       100% { transform: scale(1); opacity: 1; }
-
     }
-
-    .correct-flash { animation: correct-flash 0.5s ease-out; }
-
-    .wrong-shake { animation: wrong-shake 0.5s ease-out; }
-
-    .streak-pulse { animation: streak-pulse 0.3s ease-out; }
-
-    .bounce-in { animation: bounce-in 0.5s ease-out; }
-
-    .countdown-pulse { animation: countdown-pulse 0.8s ease-out; }
-
     
-
+    .correct-flash { animation: correct-flash 0.5s ease-out; }
+    .wrong-shake { animation: wrong-shake 0.5s ease-out; }
+    .streak-pulse { animation: streak-pulse 0.3s ease-out; }
+    .bounce-in { animation: bounce-in 0.5s ease-out; }
+    .countdown-pulse { animation: countdown-pulse 0.8s ease-out; }
+    
     .confetti {
-
       position: fixed;
-
       width: 10px;
-
       height: 10px;
-
       top: -10px;
-
       animation: confetti-fall 3s linear forwards;
-
     }
-
   </style>
-
 </head>
-
 <body>
-
   <div id="root"></div>
-
   
-
   <script type="text/babel">
-
     const { useState, useEffect, useRef, useCallback } = React;
 
-
-
-    // Sound generation using Web Audio API
-
+    // ==========================================
+    // HELPER: SOUND SYSTEM (Web Audio API)
+    // ==========================================
     const useSound = () => {
-
       const audioContextRef = useRef(null);
-
       
-
       const getContext = () => {
-
         if (!audioContextRef.current) {
-
           audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-
         }
-
         return audioContextRef.current;
-
       };
-
       
-
       const playTone = (frequency, duration, type = 'sine', volume = 0.3) => {
-
         try {
-
           const ctx = getContext();
-
           const oscillator = ctx.createOscillator();
-
           const gainNode = ctx.createGain();
-
           
-
           oscillator.connect(gainNode);
-
           gainNode.connect(ctx.destination);
-
           
-
           oscillator.frequency.value = frequency;
-
           oscillator.type = type;
-
           gainNode.gain.value = volume;
-
           gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-
           
-
           oscillator.start(ctx.currentTime);
-
           oscillator.stop(ctx.currentTime + duration);
-
         } catch (e) {
-
           console.log('Sound not available');
-
         }
-
       };
-
       
-
-      const playCorrect = () => {
-
-        playTone(523.25, 0.1); // C5
-
-        setTimeout(() => playTone(659.25, 0.1), 100); // E5
-
-        setTimeout(() => playTone(783.99, 0.15), 200); // G5
-
+      return {
+        playCorrect: () => {
+          playTone(523.25, 0.1); // C5
+          setTimeout(() => playTone(659.25, 0.1), 100); // E5
+          setTimeout(() => playTone(783.99, 0.15), 200); // G5
+        },
+        playWrong: () => playTone(200, 0.3, 'sawtooth', 0.2),
+        playStreak: () => {
+          playTone(523.25, 0.1);
+          setTimeout(() => playTone(659.25, 0.1), 80);
+          setTimeout(() => playTone(783.99, 0.1), 160);
+          setTimeout(() => playTone(1046.50, 0.2), 240);
+        },
+        playCelebration: () => {
+          const notes = [523.25, 587.33, 659.25, 698.46, 783.99, 880, 987.77, 1046.50];
+          notes.forEach((note, i) => setTimeout(() => playTone(note, 0.15), i * 100));
+        },
+        playCountdown: () => playTone(440, 0.2),
+        playGo: () => playTone(880, 0.3)
       };
-
-      
-
-      const playWrong = () => {
-
-        playTone(200, 0.3, 'sawtooth', 0.2);
-
-      };
-
-      
-
-      const playStreak = () => {
-
-        playTone(523.25, 0.1);
-
-        setTimeout(() => playTone(659.25, 0.1), 80);
-
-        setTimeout(() => playTone(783.99, 0.1), 160);
-
-        setTimeout(() => playTone(1046.50, 0.2), 240);
-
-      };
-
-      
-
-      const playCelebration = () => {
-
-        const notes = [523.25, 587.33, 659.25, 698.46, 783.99, 880, 987.77, 1046.50];
-
-        notes.forEach((note, i) => {
-
-          setTimeout(() => playTone(note, 0.15), i * 100);
-
-        });
-
-      };
-
-      
-
-      const playCountdown = () => {
-
-        playTone(440, 0.2);
-
-      };
-
-      
-
-      const playGo = () => {
-
-        playTone(880, 0.3);
-
-      };
-
-      
-
-      return { playCorrect, playWrong, playStreak, playCelebration, playCountdown, playGo };
-
     };
 
-
-
-    // Confetti component
-
+    // ==========================================
+    // COMPONENT: CONFETTI
+    // ==========================================
     const Confetti = ({ count = 50 }) => {
-
       const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
-
-      
-
       return (
-
         <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
-
           {[...Array(count)].map((_, i) => (
-
             <div
-
               key={i}
-
               className="confetti"
-
               style={{
-
                 left: `${Math.random() * 100}%`,
-
                 backgroundColor: colors[Math.floor(Math.random() * colors.length)],
-
                 animationDelay: `${Math.random() * 2}s`,
-
                 animationDuration: `${2 + Math.random() * 2}s`,
-
               }}
-
             />
-
           ))}
-
         </div>
-
       );
-
     };
 
-
-
-    // Progress history helpers
-
+    // ==========================================
+    // HELPERS: LOCAL STORAGE HISTORY
+    // ==========================================
     const saveResult = (result) => {
-
       try {
-
         const history = JSON.parse(localStorage.getItem('mathTrainerHistory') || '[]');
-
-        history.push({
-
-          ...result,
-
-          date: new Date().toISOString()
-
-        });
-
-        // Keep last 100 sessions
-
-        if (history.length > 100) history.shift();
-
+        history.push({ ...result, date: new Date().toISOString() });
+        if (history.length > 100) history.shift(); // Limit to last 100
         localStorage.setItem('mathTrainerHistory', JSON.stringify(history));
-
       } catch (e) {
-
         console.log('Could not save history');
-
       }
-
     };
-
-
 
     const getHistory = () => {
-
       try {
-
         return JSON.parse(localStorage.getItem('mathTrainerHistory') || '[]');
-
-      } catch (e) {
-
-        return [];
-
-      }
-
+      } catch (e) { return []; }
     };
 
-
-
-    const getPersonalBests = () => {
-
-      const history = getHistory();
-
-      const bests = {};
-
-      
-
-      history.forEach(session => {
-
-        const key = session.operations.sort().join(',');
-
-        if (!bests[key] || session.percentage > bests[key].percentage) {
-
-          bests[key] = session;
-
-        }
-
-      });
-
-      
-
-      return bests;
-
-    };
-
-
-
-    // Firestore-backed sessions for signed-in users (used by Progress screen)
-
+    // ==========================================
+    // HOOK: USER SESSIONS (Firebase Read)
+    // ==========================================
     const useUserSessions = (user) => {
-
       const [sessions, setSessions] = useState([]);
-
       const [sessionsLoading, setSessionsLoading] = useState(false);
-
       const [sessionsError, setSessionsError] = useState(null);
 
-
-
       useEffect(() => {
-
         if (!user) {
-
           setSessions([]);
-
           setSessionsLoading(false);
-
-          setSessionsError(null);
-
           return;
-
         }
-
-
-
         setSessionsLoading(true);
-
-        setSessionsError(null);
-
-
-
-        // Listen to this user's saved sessions (one Firestore doc per session)
-
         const unsub = db.collection('scores')
-
           .where('userId', '==', user.uid)
-
           .orderBy('timestamp', 'desc')
-
           .onSnapshot(
-
             (snap) => {
-
               const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
               setSessions(rows);
-
               setSessionsLoading(false);
-
             },
-
             (err) => {
-
               console.error('Error loading sessions:', err);
-
               setSessionsError(err);
-
               setSessionsLoading(false);
-
             }
-
           );
-
-
-
         return () => unsub();
-
       }, [user]);
 
-
-
       return { sessions, sessionsLoading, sessionsError };
-
     };
 
-
-
+    // ==========================================
+    // HELPERS: UTILITY FUNCTIONS
+    // ==========================================
     const buildChallengeUrl = (code) => {
-
       if (!code) return null;
-
       const base = `${window.location.origin}${window.location.pathname}`;
-
       const url = new URL(base);
-
       url.searchParams.set('c', code);
-
       return url.toString();
-
     };
-
-
 
     const copyText = async (text) => {
-
       try {
-
         await navigator.clipboard.writeText(text);
-
         return true;
-
       } catch (e) {
-
-        // Fallback
-
+        // Fallback for older browsers
         const ta = document.createElement('textarea');
-
         ta.value = text;
-
         document.body.appendChild(ta);
-
         ta.select();
-
         try { document.execCommand('copy'); } catch (_) {}
-
         document.body.removeChild(ta);
-
         return true;
-
       }
-
     };
 
-
-
-
-
-    const VERSION = 'v3.85';
-
+    const VERSION = 'v3.86';
     
-
-    // Version display component
-
+    // Version Badge Component
     const VersionBadge = () => (
-
-      <div className="fixed bottom-2 right-2 text-xs text-gray-500 z-50">
-
-        {VERSION}
-
-      </div>
-
+      <div className="fixed bottom-2 right-2 text-xs text-gray-500 z-50">{VERSION}</div>
     );
-
     
-
-    // Firebase hooks
-
+    // ==========================================
+    // HOOK: AUTHENTICATION
+    // ==========================================
     const useAuth = () => {
-
       const [user, setUser] = useState(null);
-
       const [loading, setLoading] = useState(true);
-
       
-
       useEffect(() => {
-
         const unsubscribe = auth.onAuthStateChanged((user) => {
-
           setUser(user);
-
           setLoading(false);
-
         });
-
         return unsubscribe;
-
       }, []);
-
       
-
       const signInWithGoogle = async () => {
-
         const provider = new firebase.auth.GoogleAuthProvider();
-
-        try {
-
-          await auth.signInWithPopup(provider);
-
-        } catch (error) {
-
-          console.error('Sign in error:', error);
-
-        }
-
+        try { await auth.signInWithPopup(provider); } catch (error) { console.error('Sign in error:', error); }
       };
-
       
-
       const signOut = async () => {
-
-        try {
-
-          await auth.signOut();
-
-        } catch (error) {
-
-          console.error('Sign out error:', error);
-
-        }
-
+        try { await auth.signOut(); } catch (error) { console.error('Sign out error:', error); }
       };
-
       
-
       return { user, loading, signInWithGoogle, signOut };
-
     };
-
     
-
-    // Save score to leaderboard
-
+    // ==========================================
+    // FIREBASE: DATA SAVING & FETCHING
+    // ==========================================
     const saveToLeaderboard = async (user, scoreData) => {
-
       if (!user) return;
-
-      
-
       try {
-
         await db.collection('scores').add({
-
           userId: user.uid,
-
           userName: user.displayName || 'Anonymous',
-
           userPhoto: user.photoURL,
-
           score: scoreData.percentage,
-
           correct: scoreData.correct,
-
           total: scoreData.total,
-
           streak: scoreData.maxStreak,
-
           points: scoreData.points,
-
           time: scoreData.timeTaken,
-
           operations: scoreData.operations,
-
           digits: scoreData.digits,
-
           mode: scoreData.mode,
-
           questionCount: scoreData.questionCount,
-
           seed: scoreData.seed,
-
           adaptiveDifficulty: scoreData.adaptiveDifficulty,
-
           challengeCode: scoreData.challengeCode,
-
           timestamp: firebase.firestore.FieldValue.serverTimestamp()
-
         });
-
       } catch (error) {
-
         console.error('Error saving score:', error);
-
       }
-
     };
-
     
-
-    // Get leaderboard (metric: 'score' | 'points' | 'streak')
-
     const useLeaderboard = (metric = 'score') => {
-
       const [leaderboard, setLeaderboard] = useState([]);
-
       const [loading, setLoading] = useState(true);
-
-
 
       const fetchLeaderboard = async () => {
-
         setLoading(true);
-
         try {
-
           const snapshot = await db.collection('scores')
-
             .orderBy(metric, 'desc')
-
             .limit(50)
-
             .get();
-
-
-
           const scores = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
           setLeaderboard(scores);
-
         } catch (error) {
-
           console.error('Error fetching leaderboard:', error);
-
         } finally {
-
           setLoading(false);
-
         }
-
       };
 
-
-
       useEffect(() => {
-
         setLoading(true);
-
-
-
-        // Realtime listener for the selected metric
-
-        const q = db.collection('scores')
-
-          .orderBy(metric, 'desc')
-
-          .limit(50);
-
-
-
+        const q = db.collection('scores').orderBy(metric, 'desc').limit(50);
         const unsub = q.onSnapshot(
-
           (snap) => {
-
             const scores = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
             setLeaderboard(scores);
-
             setLoading(false);
-
           },
-
           (err) => {
-
             console.error('Leaderboard realtime listener error:', err);
-
-            // Fallback: one-time fetch so we can still show something.
-
-            fetchLeaderboard();
-
+            fetchLeaderboard(); // Fallback
           }
-
         );
-
-
-
         return () => unsub();
-
       }, [metric]);
 
-
-
       return { leaderboard, loading, refresh: fetchLeaderboard };
-
     };
 
-
-
+    // ==========================================
+    // MAIN APPLICATION COMPONENT
+    // ==========================================
     function MathTrainer() {
-
+      // --- Auth & Data Hooks ---
       const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
-
       const [leaderboardMetric, setLeaderboardMetric] = useState('score');
-
       const { leaderboard, loading: leaderboardLoading, refresh: refreshLeaderboard } = useLeaderboard(leaderboardMetric);
-
+      
+      // --- App State ---
       const [showLeaderboard, setShowLeaderboard] = useState(false);
-
+      const [stage, setStage] = useState('setup'); // setup, countdown, practicing, results
       
-
-      const [stage, setStage] = useState('setup');
-
+      // Settings State
       const [operations, setOperations] = useState({
-
-        addition: false,
-
-        subtraction: false,
-
-        multiplication: false,
-
-        division: false
-
+        addition: false, subtraction: false, multiplication: false, division: false
       });
-
       const [digits, setDigits] = useState({
-
-        addition: 1,
-
-        subtraction: 1,
-
-        multiplication: '1x1', // Special multiplication modes
-
-        division: 1
-
+        addition: 1, subtraction: 1, multiplication: '1x1', division: 1
       });
-
-      const [mode, setMode] = useState('questions');
-
+      const [mode, setMode] = useState('questions'); // 'questions' or 'time'
       const [questionCount, setQuestionCount] = useState(10);
-
       const [timeLimit, setTimeLimit] = useState(60);
-
       const [adaptiveDifficulty, setAdaptiveDifficulty] = useState(false);
-
       const [soundEnabled, setSoundEnabled] = useState(true);
-
       
-
+      // Gameplay State
       const [questions, setQuestions] = useState([]);
-
       const [currentIndex, setCurrentIndex] = useState(0);
-
       const [answer, setAnswer] = useState('');
-
       const [results, setResults] = useState([]);
-
       const [startTime, setStartTime] = useState(null);
-
       const [endTime, setEndTime] = useState(null);
-
       const [timeRemaining, setTimeRemaining] = useState(0);
-
-      
-
       const [streak, setStreak] = useState(0);
-
       const [maxStreak, setMaxStreak] = useState(0);
-
       const [points, setPoints] = useState(0);
-
       const [feedback, setFeedback] = useState(null); // 'correct' or 'wrong'
-
       const [showConfetti, setShowConfetti] = useState(false);
-
       const [countdown, setCountdown] = useState(null);
-
       const [currentDigits, setCurrentDigits] = useState({...digits});
-
+      
+      // History/Challenge State
       const [showHistory, setShowHistory] = useState(false);
-
       const { sessions: userSessions, sessionsLoading: userSessionsLoading, sessionsError: userSessionsError } = useUserSessions(user);
-
       const [expandedSessionId, setExpandedSessionId] = useState(null);
-
       const [progressMessage, setProgressMessage] = useState('');
-
-
-
       const [showShareCard, setShowShareCard] = useState(false);
-
       const [shareMessage, setShareMessage] = useState('');
-
       const [generatedChallengeCode, setGeneratedChallengeCode] = useState(null);
 
-
-
+      // Incoming Challenge State
       const [challengeMode, setChallengeMode] = useState(false);
-
       const [challengeCreator, setChallengeCreator] = useState('');
-
       const [challengeScore, setChallengeScore] = useState(null);
-
       const [challengeTime, setChallengeTime] = useState(null);
-
       const [showChallengeInput, setShowChallengeInput] = useState(false);
-
       const [challengeCodeInput, setChallengeCodeInput] = useState('');
-
       const [playerName, setPlayerName] = useState('');
-
       const [urlChallengeCode, setUrlChallengeCode] = useState(null);
-
       
-
+      // Refs
       const shareCardRef = useRef(null);
-
-      
-
       const inputRef = useRef(null);
-
       const timerRef = useRef(null);
-
       const feedbackTimeoutRef = useRef(null);
-
       
-
       const sound = useSound();
-
       
-
-      // Check for challenge code in URL on load
-
+      // --- Initialization ---
       useEffect(() => {
-
         const params = new URLSearchParams(window.location.search);
-
         const code = params.get('c');
-
         if (code) {
-
           setUrlChallengeCode(code);
-
         }
-
       }, []);
 
-
-
+      // --- Math Logic Helpers ---
       const generateNumber = (numDigits) => {
-
         const min = numDigits === 1 ? 1 : Math.pow(10, numDigits - 1);
-
         const max = Math.pow(10, numDigits) - 1;
-
         return Math.floor(Math.random() * (max - min + 1)) + min;
-
       };
-
       
-
-      // Generate multiplication numbers based on mode (non-seeded version)
-
       const generateMultNums = (multMode) => {
-
         switch (multMode) {
-
-          case '1x1': // 1-12 × 1-12
-
-            return [Math.floor(Math.random() * 12) + 1, Math.floor(Math.random() * 12) + 1];
-
-          case '2x1': // 10-99 × 1-9
-
-            return [Math.floor(Math.random() * 90) + 10, Math.floor(Math.random() * 9) + 1];
-
-          case '3x1': // 100-999 × 1-9
-
-            return [Math.floor(Math.random() * 900) + 100, Math.floor(Math.random() * 9) + 1];
-
-          case '2x2': // 10-99 × 10-99
-
-            return [Math.floor(Math.random() * 90) + 10, Math.floor(Math.random() * 90) + 10];
-
-          default:
-
-            return [Math.floor(Math.random() * 12) + 1, Math.floor(Math.random() * 12) + 1];
-
+          case '1x1': return [Math.floor(Math.random() * 12) + 1, Math.floor(Math.random() * 12) + 1];
+          case '2x1': return [Math.floor(Math.random() * 90) + 10, Math.floor(Math.random() * 9) + 1];
+          case '3x1': return [Math.floor(Math.random() * 900) + 100, Math.floor(Math.random() * 9) + 1];
+          case '2x2': return [Math.floor(Math.random() * 90) + 10, Math.floor(Math.random() * 90) + 10];
+          default: return [Math.floor(Math.random() * 12) + 1, Math.floor(Math.random() * 12) + 1];
         }
-
       };
-
-
 
       const generateQuestion = useCallback((opDigits) => {
-
         const activeOps = Object.entries(operations).filter(([_, active]) => active);
-
         if (activeOps.length === 0) return null;
-
         
-
         const [op] = activeOps[Math.floor(Math.random() * activeOps.length)];
-
         const numDigits = opDigits ? opDigits[op] : digits[op];
-
         
-
         let num1, num2, correctAnswer, symbol;
-
         
-
         switch (op) {
-
           case 'addition':
-
             num1 = generateNumber(numDigits);
-
             num2 = generateNumber(numDigits);
-
             correctAnswer = num1 + num2;
-
             symbol = '+';
-
             break;
-
           case 'subtraction':
-
             num1 = generateNumber(numDigits);
-
             num2 = generateNumber(numDigits);
-
             if (num2 > num1) [num1, num2] = [num2, num1];
-
             correctAnswer = num1 - num2;
-
             symbol = '−';
-
             break;
-
           case 'multiplication':
-
             [num1, num2] = generateMultNums(numDigits);
-
             correctAnswer = num1 * num2;
-
             symbol = '×';
-
             break;
-
           case 'division':
-
             num2 = generateNumber(numDigits);
-
             correctAnswer = generateNumber(numDigits);
-
             num1 = num2 * correctAnswer;
-
             symbol = '÷';
-
             break;
-
-          default:
-
-            return null;
-
+          default: return null;
         }
-
-        
-
         return { num1, num2, symbol, correctAnswer, operation: op, digits: numDigits };
-
       }, [operations, digits]);
 
-
-
+      // --- Game Flow Control ---
       const startCountdown = () => {
-
         const activeOps = Object.entries(operations).filter(([_, active]) => active);
-
         if (activeOps.length === 0) {
-
           alert('Please select at least one operation!');
-
           return;
-
         }
-
-        
-
         setCountdown(3);
-
         setStage('countdown');
-
       };
 
-
-
       useEffect(() => {
-
         if (stage === 'countdown' && countdown !== null) {
-
           if (countdown > 0) {
-
             if (soundEnabled) sound.playCountdown();
-
             const timer = setTimeout(() => setCountdown(countdown - 1), 800);
-
             return () => clearTimeout(timer);
-
           } else {
-
             if (soundEnabled) sound.playGo();
-
             setTimeout(() => startPractice(), 500);
-
           }
-
         }
-
       }, [stage, countdown, soundEnabled]);
 
-
-
       const startPractice = () => {
-
         const count = mode === 'questions' ? questionCount : 100;
-
-        
-
-        // Generate a random seed for this session
-
         const seed = Math.floor(Math.random() * 1000000);
-
         setChallengeSeed(seed);
-
         
-
-        // Generate questions from seed
-
         const newQuestions = generateQuestionsFromSeed(seed, count, operations, digits);
-
         
-
         setQuestions(newQuestions);
-
         setCurrentIndex(0);
-
         setResults([]);
-
         setAnswer('');
-
         setStartTime(Date.now());
-
         setEndTime(null);
-
         setStreak(0);
-
         setMaxStreak(0);
-
         setPoints(0);
-
         setCurrentDigits({...digits});
-
         setCountdown(null);
-
         
-
-        if (mode === 'time') {
-
-          setTimeRemaining(timeLimit);
-
-        }
-
-        
-
+        if (mode === 'time') setTimeRemaining(timeLimit);
         setStage('practicing');
-
       };
 
-
-
       useEffect(() => {
-
         if (stage === 'practicing' && inputRef.current) {
-
           setTimeout(() => {
-
-            if (inputRef.current) {
-
-              inputRef.current.focus();
-
-            }
-
+            if (inputRef.current) inputRef.current.focus();
           }, 10);
-
         }
-
       }, [stage, currentIndex]);
 
-
-
+      // Timer Logic
       useEffect(() => {
-
         if (stage === 'practicing' && mode === 'time' && timeRemaining > 0) {
-
           timerRef.current = setTimeout(() => {
-
             setTimeRemaining(t => t - 1);
-
           }, 1000);
-
           return () => clearTimeout(timerRef.current);
-
         } else if (stage === 'practicing' && mode === 'time' && timeRemaining === 0 && startTime) {
-
           finishPractice();
-
         }
-
       }, [stage, mode, timeRemaining, startTime]);
 
-
-
-      // FIX 1: Max Streak Update Fix
-
       const finishPractice = (finalResults, maxStreakOverride = null) => {
-
         const resultsToSave = finalResults || results;
-
         const correct = resultsToSave.filter(r => r.isCorrect).length;
-
         const total = resultsToSave.length;
-
         const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
-
         
-
-        // Use override if provided (fixes the lag in state update)
-
+        // Ensure accurate streak data despite React's async state updates
         const finalMaxStreak = maxStreakOverride !== null ? maxStreakOverride : maxStreak;
 
-
-
         setEndTime(Date.now());
-
         setStage('results');
-
         if (timerRef.current) clearTimeout(timerRef.current);
-
         
-
         if (percentage >= 80) {
-
           setShowConfetti(true);
-
           if (soundEnabled) sound.playCelebration();
-
           setTimeout(() => setShowConfetti(false), 4000);
-
         }
-
         
-
-        // Save to history
-
         const activeOps = Object.entries(operations).filter(([_, active]) => active).map(([op]) => op);
-
         const timeTaken = Date.now() - startTime;
-
         
-
         saveResult({
-
           operations: activeOps,
-
           digits: {...digits},
-
           mode,
-
           correct,
-
           total,
-
           percentage,
-
           maxStreak: finalMaxStreak, 
-
           points,
-
           timeTaken
-
         });
-
         
-
-        // Save to Firebase leaderboard if logged in
-
         if (user) {
-
           saveToLeaderboard(user, {
-
             operations: activeOps,
-
             digits: currentDigits,
-
             mode,
-
             questionCount: total,
-
             seed: challengeSeed,
-
             adaptiveDifficulty,
-
             challengeCode: (generatedChallengeCode || null),
-
             correct,
-
             total,
-
             percentage,
-
             maxStreak: finalMaxStreak,
-
             points,
-
             timeTaken: Math.round(timeTaken / 1000)
-
           });
-
         }
-
       };
-
-
 
       const submitAnswer = () => {
-
         if (answer === '') return;
-
+        if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
         
-
-        if (feedbackTimeoutRef.current) {
-
-          clearTimeout(feedbackTimeoutRef.current);
-
-        }
-
-        
-
         const currentQuestion = questions[currentIndex];
-
         const userAnswer = parseInt(answer, 10);
-
         const isCorrect = userAnswer === currentQuestion.correctAnswer;
-
         
-
-        // Calculate points
-
         let earnedPoints = 0;
-
         let newStreak = streak;
-
         
-
-        // Helper to get difficulty multiplier for points
-
+        // Difficulty Multiplier Logic
         const getDifficultyMultiplier = (questionDigits) => {
-
           if (typeof questionDigits === 'string') {
-
-            // Multiplication modes
-
             const multPoints = { '1x1': 1, '2x1': 2, '3x1': 3, '2x2': 4 };
-
             return multPoints[questionDigits] || 1;
-
           }
-
-          return questionDigits; // Regular number for other operations
-
+          return questionDigits;
         };
-
         
-
         if (isCorrect) {
-
           newStreak = streak + 1;
-
-          earnedPoints = 10 * getDifficultyMultiplier(currentQuestion.digits); // More points for harder questions
-
-          if (newStreak >= 3) {
-
-            earnedPoints += newStreak * 5; // Streak bonus
-
-          }
-
+          earnedPoints = 10 * getDifficultyMultiplier(currentQuestion.digits);
+          if (newStreak >= 3) earnedPoints += newStreak * 5; // Streak bonus
+          
           if (soundEnabled) {
-
-            if (newStreak > 0 && newStreak % 5 === 0) {
-
-              sound.playStreak();
-
-            } else {
-
-              sound.playCorrect();
-
-            }
-
+            if (newStreak > 0 && newStreak % 5 === 0) sound.playStreak();
+            else sound.playCorrect();
           }
-
+          
           setStreak(newStreak);
-
           setMaxStreak(Math.max(maxStreak, newStreak));
-
           setFeedback('correct');
-
           
-
-          // Adaptive difficulty: increase after 3 correct in a row
-
+          // Adaptive Difficulty (Increase)
           if (adaptiveDifficulty && newStreak > 0 && newStreak % 3 === 0) {
-
             setCurrentDigits(prev => {
-
               const newDigits = {...prev};
-
               Object.keys(newDigits).forEach(op => {
-
-                if (op === 'multiplication') return; // Skip multiplication for adaptive
-
-                if (operations[op] && newDigits[op] < 3) {
-
-                  newDigits[op] = Math.min(3, newDigits[op] + 1);
-
-                }
-
+                if (op === 'multiplication') return;
+                if (operations[op] && newDigits[op] < 3) newDigits[op] = Math.min(3, newDigits[op] + 1);
               });
-
               return newDigits;
-
             });
-
           }
-
         } else {
-
           newStreak = 0;
-
           setStreak(0);
-
           setFeedback('wrong');
-
           if (soundEnabled) sound.playWrong();
-
           
-
-          // Adaptive difficulty: decrease after wrong answer
-
+          // Adaptive Difficulty (Decrease)
           if (adaptiveDifficulty) {
-
             setCurrentDigits(prev => {
-
               const newDigits = {...prev};
-
               const op = currentQuestion.operation;
-
-              if (op === 'multiplication') return prev; // Skip multiplication for adaptive
-
-              if (newDigits[op] > 1) {
-
-                newDigits[op] = Math.max(1, newDigits[op] - 1);
-
-              }
-
+              if (op === 'multiplication') return prev;
+              if (newDigits[op] > 1) newDigits[op] = Math.max(1, newDigits[op] - 1);
               return newDigits;
-
             });
-
           }
-
         }
-
         
-
         setPoints(p => p + earnedPoints);
-
         
-
         const newResults = [...results, {
-
-          ...currentQuestion,
-
-          userAnswer,
-
-          isCorrect
-
+          ...currentQuestion, userAnswer, isCorrect
         }];
-
         
-
-        // Clear feedback after delay and move to next question
-
         feedbackTimeoutRef.current = setTimeout(() => {
-
           setFeedback(null);
-
-          
-
           const nextIndex = currentIndex + 1;
-
-          
-
-          // Calculate max streak here and pass it
-
           const currentMaxStreak = Math.max(maxStreak, newStreak);
 
-
-
           if (mode === 'questions' && nextIndex >= questionCount) {
-
             setResults(newResults);
-
-            finishPractice(newResults, currentMaxStreak); // Pass override
-
+            finishPractice(newResults, currentMaxStreak);
           } else if (nextIndex < questions.length) {
-
-            // Generate new question with current difficulty
-
+            // Check if we need to generate more questions (adaptive mode)
             const updatedQuestions = [...questions];
-
             if (nextIndex + 5 < questions.length) {
-
               updatedQuestions[nextIndex + 5] = generateQuestion(currentDigits);
-
             }
-
             setQuestions(updatedQuestions);
-
             setResults(newResults);
-
             setAnswer('');
-
             setCurrentIndex(nextIndex);
-
           } else {
-
             setResults(newResults);
-
-            finishPractice(newResults, currentMaxStreak); // Pass override
-
+            finishPractice(newResults, currentMaxStreak);
           }
-
         }, 500);
-
       };
-
       
-
       const handleKeyDown = (e) => {
-
         if (e.key === 'Enter') {
-
           e.preventDefault();
-
           submitAnswer();
-
         }
-
       };
-
       
-
       const skipQuestion = () => {
-
-        if (feedbackTimeoutRef.current) {
-
-          clearTimeout(feedbackTimeoutRef.current);
-
-        }
-
+        if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
         
-
         const currentQuestion = questions[currentIndex];
-
         setStreak(0);
-
         setFeedback('wrong');
-
         if (soundEnabled) sound.playWrong();
-
         
-
         const newResults = [...results, {
-
-          ...currentQuestion,
-
-          userAnswer: null,
-
-          isCorrect: false,
-
-          skipped: true
-
+          ...currentQuestion, userAnswer: null, isCorrect: false, skipped: true
         }];
-
         
-
         feedbackTimeoutRef.current = setTimeout(() => {
-
           setFeedback(null);
-
-          
-
           const nextIndex = currentIndex + 1;
-
           
-
           if (mode === 'questions' && nextIndex >= questionCount) {
-
             setResults(newResults);
-
             finishPractice(newResults);
-
           } else if (nextIndex < questions.length) {
-
             setResults(newResults);
-
             setAnswer('');
-
             setCurrentIndex(nextIndex);
-
           } else {
-
             setResults(newResults);
-
             finishPractice(newResults);
-
           }
-
         }, 300);
-
       };
 
-
-
+      // --- Formatting & Display Helpers ---
       const formatTime = (ms) => {
-
         const totalSeconds = Math.floor(ms / 1000);
-
         const minutes = Math.floor(totalSeconds / 60);
-
         const seconds = totalSeconds % 60;
-
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
       };
-
-
 
       const getGrade = (percentage) => {
-
         if (percentage >= 90) return { grade: 'A', emoji: '🌟', message: 'Excellent!' };
-
         if (percentage >= 80) return { grade: 'B', emoji: '😊', message: 'Great job!' };
-
         if (percentage >= 70) return { grade: 'C', emoji: '👍', message: 'Good work!' };
-
         if (percentage >= 60) return { grade: 'D', emoji: '💪', message: 'Keep practicing!' };
-
         return { grade: 'F', emoji: '📚', message: "Let's try again!" };
-
       };
-
-
 
       const restart = () => {
-
         setStage('setup');
-
         setQuestions([]);
-
         setCurrentIndex(0);
-
         setResults([]);
-
         setAnswer('');
-
         setFeedback(null);
-
         setStreak(0);
-
         setMaxStreak(0);
-
         setPoints(0);
-
         setChallengeMode(false);
-
         setChallengeCreator('');
-
         setChallengeScore(null);
-
         setChallengeTime(null);
-
       };
-
       
-
+      // --- Sharing & Challenge System ---
       const getShareText = () => {
-
         const correct = results.filter(r => r.isCorrect).length;
-
         const total = results.length;
-
         const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
-
         const { grade, emoji } = getGrade(percentage);
-
         const time = formatTime(endTime - startTime);
-
         const code = encodeChallenge();
-
         const name = user?.displayName || playerName || 'I';
-
         const challengeUrl = `https://michaelhills23.github.io/Math-trainer/?c=${code}`;
-
         
-
-        return `🧮 ${name} scored ${percentage}%! ${emoji}
-
-
-
-📊 ${correct}/${total} correct
-
-⏱️ Time: ${time}
-
-🔥 Best Streak: ${maxStreak}
-
-
-
-Beat my score! ${challengeUrl}`;
-
+        return `🧮 ${name} scored ${percentage}%! ${emoji}\n\n📊 ${correct}/${total} correct\n⏱️ Time: ${time}\n🔥 Best Streak: ${maxStreak}\n\nBeat my score! ${challengeUrl}`;
       };
-
       
-
       const shareResults = async () => {
-
         const text = getShareText();
-
-        
-
         if (navigator.share) {
-
           try {
-
-            await navigator.share({
-
-              title: 'Math Trainer Results',
-
-              text: text
-
-            });
-
+            await navigator.share({ title: 'Math Trainer Results', text: text });
           } catch (e) {
-
-            if (e.name !== 'AbortError') {
-
-              copyToClipboard(text);
-
-            }
-
+            if (e.name !== 'AbortError') copyToClipboard(text);
           }
-
         } else {
-
           copyToClipboard(text);
-
         }
-
       };
-
       
-
       const copyToClipboard = async (text) => {
-
         try {
-
           await navigator.clipboard.writeText(text);
-
           setShareMessage('Copied to clipboard! 📋');
-
           setTimeout(() => setShareMessage(''), 2000);
-
         } catch (e) {
-
           setShareMessage('Could not copy');
-
           setTimeout(() => setShareMessage(''), 2000);
-
         }
-
       };
-
       
-
       const downloadShareCard = async () => {
-
         if (!shareCardRef.current) return;
-
-        
-
         try {
-
-          // Use html2canvas-like approach with SVG
-
           const card = shareCardRef.current;
-
           const canvas = document.createElement('canvas');
-
           const ctx = canvas.getContext('2d');
-
           const scale = 2; // Higher resolution
-
           
-
           canvas.width = 400 * scale;
-
           canvas.height = 500 * scale;
-
           ctx.scale(scale, scale);
-
           
-
-          // Draw background gradient
-
+          // Draw background
           const gradient = ctx.createLinearGradient(0, 0, 400, 500);
-
           gradient.addColorStop(0, '#a855f7');
-
           gradient.addColorStop(0.5, '#ec4899');
-
           gradient.addColorStop(1, '#f97316');
-
           ctx.fillStyle = gradient;
-
           ctx.roundRect(0, 0, 400, 500, 20);
-
           ctx.fill();
-
           
-
           // Draw white card
-
           ctx.fillStyle = 'white';
-
           ctx.roundRect(20, 20, 360, 460, 15);
-
           ctx.fill();
-
           
-
-          // Get data
-
+          // Data
           const correct = results.filter(r => r.isCorrect).length;
-
           const total = results.length;
-
           const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
-
           const { grade, emoji } = getGrade(percentage);
-
           
-
-          // Draw text
-
+          // Draw Text
           ctx.fillStyle = '#1f2937';
-
           ctx.textAlign = 'center';
-
-          
-
-          // Title
-
           ctx.font = 'bold 28px system-ui, sans-serif';
-
           ctx.fillText('🧮 Math Trainer', 200, 70);
-
           
-
-          // Emoji
-
           ctx.font = '80px system-ui, sans-serif';
-
           ctx.fillText(emoji, 200, 170);
-
           
-
-          // Percentage
-
           ctx.font = 'bold 64px system-ui, sans-serif';
-
           ctx.fillStyle = percentage >= 70 ? '#22c55e' : percentage >= 50 ? '#eab308' : '#ef4444';
-
           ctx.fillText(`${percentage}%`, 200, 260);
-
           
-
-          // Grade
-
           ctx.font = 'bold 36px system-ui, sans-serif';
-
           ctx.fillStyle = '#9333ea';
-
           ctx.fillText(`Grade: ${grade}`, 200, 310);
-
           
-
-          // Stats
-
           ctx.font = '20px system-ui, sans-serif';
-
           ctx.fillStyle = '#6b7280';
-
           ctx.fillText(`${correct}/${total} correct`, 200, 360);
-
           ctx.fillText(`🔥 ${maxStreak} streak  ⭐ ${points} pts`, 200, 390);
-
           
-
-          // Date
-
           ctx.font = '16px system-ui, sans-serif';
-
           ctx.fillStyle = '#9ca3af';
-
           ctx.fillText(new Date().toLocaleDateString(), 200, 440);
-
           
-
-          // Download
-
+          // Trigger Download
           const link = document.createElement('a');
-
           link.download = `math-trainer-${percentage}percent.png`;
-
           link.href = canvas.toDataURL('image/png');
-
           link.click();
-
           
-
           setShareMessage('Image saved! 🖼️');
-
           setTimeout(() => setShareMessage(''), 2000);
-
         } catch (e) {
-
           console.error('Could not create image:', e);
-
           setShareMessage('Could not save image');
-
           setTimeout(() => setShareMessage(''), 2000);
-
         }
-
       };
-
       
-
-      // Challenge system functions
-
-      // Seed-based encoding: just store the seed that generates the same questions
-
+      // --- SEED-BASED CHALLENGE GENERATION ---
       const [challengeSeed, setChallengeSeed] = useState(null);
-
       
-
-      // Seeded random number generator (mulberry32)
-
+      // Mulberry32 seeded RNG
       const seededRandom = (seed) => {
-
         return () => {
-
           seed = (seed + 0x6D2B79F5) | 0;
-
           let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-
           t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-
           return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-
         };
-
       };
-
       
-
       const generateQuestionsFromSeed = (seed, count, ops, digs) => {
-
         const random = seededRandom(seed);
-
         const activeOps = Object.entries(ops).filter(([_, active]) => active).map(([op]) => op);
-
         if (activeOps.length === 0) return [];
-
         
-
         const genNum = (numDigits) => {
-
           const min = numDigits === 1 ? 1 : Math.pow(10, numDigits - 1);
-
           const max = Math.pow(10, numDigits) - 1;
-
           return Math.floor(random() * (max - min + 1)) + min;
-
         };
-
         
-
-        // Generate multiplication numbers based on mode
-
         const genMultNums = (multMode) => {
-
           switch (multMode) {
-
-            case '1x1': // 1-12 × 1-12
-
-              return [Math.floor(random() * 12) + 1, Math.floor(random() * 12) + 1];
-
-            case '2x1': // 10-99 × 1-9
-
-              return [Math.floor(random() * 90) + 10, Math.floor(random() * 9) + 1];
-
-            case '3x1': // 100-999 × 1-9
-
-              return [Math.floor(random() * 900) + 100, Math.floor(random() * 9) + 1];
-
-            case '2x2': // 10-99 × 10-99
-
-              return [Math.floor(random() * 90) + 10, Math.floor(random() * 90) + 10];
-
-            default:
-
-              return [Math.floor(random() * 12) + 1, Math.floor(random() * 12) + 1];
-
+            case '1x1': return [Math.floor(random() * 12) + 1, Math.floor(random() * 12) + 1];
+            case '2x1': return [Math.floor(random() * 90) + 10, Math.floor(random() * 9) + 1];
+            case '3x1': return [Math.floor(random() * 900) + 100, Math.floor(random() * 9) + 1];
+            case '2x2': return [Math.floor(random() * 90) + 10, Math.floor(random() * 90) + 10];
+            default: return [Math.floor(random() * 12) + 1, Math.floor(random() * 12) + 1];
           }
-
         };
-
         
-
         const questions = [];
-
         for (let i = 0; i < count; i++) {
-
           const op = activeOps[Math.floor(random() * activeOps.length)];
-
           const numDigits = digs[op];
-
-          
-
           let num1, num2, correctAnswer, symbol;
-
           
-
           switch (op) {
-
             case 'addition':
-
-              num1 = genNum(numDigits);
-
-              num2 = genNum(numDigits);
-
-              correctAnswer = num1 + num2;
-
-              symbol = '+';
-
-              break;
-
+              num1 = genNum(numDigits); num2 = genNum(numDigits); correctAnswer = num1 + num2; symbol = '+'; break;
             case 'subtraction':
-
-              num1 = genNum(numDigits);
-
-              num2 = genNum(numDigits);
-
+              num1 = genNum(numDigits); num2 = genNum(numDigits);
               if (num2 > num1) [num1, num2] = [num2, num1];
-
-              correctAnswer = num1 - num2;
-
-              symbol = '−';
-
-              break;
-
+              correctAnswer = num1 - num2; symbol = '−'; break;
             case 'multiplication':
-
-              [num1, num2] = genMultNums(numDigits);
-
-              correctAnswer = num1 * num2;
-
-              symbol = '×';
-
-              break;
-
+              [num1, num2] = genMultNums(numDigits); correctAnswer = num1 * num2; symbol = '×'; break;
             case 'division':
-
-              num2 = genNum(numDigits);
-
-              correctAnswer = genNum(numDigits);
-
-              num1 = num2 * correctAnswer;
-
-              symbol = '÷';
-
-              break;
-
+              num2 = genNum(numDigits); correctAnswer = genNum(numDigits); num1 = num2 * correctAnswer; symbol = '÷'; break;
           }
-
-          
-
           questions.push({ num1, num2, symbol, correctAnswer, operation: op, digits: numDigits });
-
         }
-
         return questions;
-
       };
-
       
-
-      // Encode: score.seed.count.ops.digits.time
-
-      // ops: bitmask (add=1, sub=2, mul=4, div=8)
-
-      // digits: packed as add*1 + sub*4 + mul*16 + div*64 (each 0-3)
-
-      // time: in seconds (base36)
-
-
-
+      // --- Encoding/Decoding for Backwards Compatibility ---
       const packOpBits = (ops) => ( (ops.addition ? 1 : 0) | (ops.subtraction ? 2 : 0) | (ops.multiplication ? 4 : 0) | (ops.division ? 8 : 0) );
-
-
-
       const packDigits = (digs) => {
-
-        // Map multiplication mode to number: 1x1=0, 2x1=1, 3x1=2, 2x2=3
-
         const multModeMap = { '1x1': 0, '2x1': 1, '3x1': 2, '2x2': 3 };
-
         const multModeNum = multModeMap[digs.multiplication] ?? 0;
-
         return (Number(digs.addition) - 1) + 
-
                ((Number(digs.subtraction) - 1) * 4) + 
-
                (multModeNum * 16) + 
-
                ((Number(digs.division) - 1) * 64);
-
       };
-
-
-
-      // Build a challenge code from explicit session data (used for saved sessions)
-
-      // Format: score.seed.count.ops.digits.time (all base36)
 
       const encodeChallengeFromData = (percentage, seed, count, ops, digs, timeSeconds) => {
-
         try {
-
           const opBits = packOpBits(ops);
-
           const digitsPacked = packDigits(digs);
-
           return `${Number(percentage).toString(36)}.${Number(seed).toString(36)}.${Number(count).toString(36)}.${Number(opBits).toString(36)}.${Number(digitsPacked).toString(36)}.${Number(timeSeconds ?? 0).toString(36)}`;
-
-        } catch (e) {
-
-          return null;
-
-        }
-
+        } catch (e) { return null; }
       };
-
-
-
-
 
       const encodeChallenge = () => {
-
         const correct = results.filter(r => r.isCorrect).length;
-
         const total = results.length;
-
         const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
-
-        const timeTaken = Math.round((endTime - startTime) / 1000); // seconds
-
-        
-
-        const opBits = (operations.addition ? 1 : 0) | 
-
-                       (operations.subtraction ? 2 : 0) | 
-
-                       (operations.multiplication ? 4 : 0) | 
-
-                       (operations.division ? 8 : 0);
-
-        
-
-        // Map multiplication mode to number: 1x1=0, 2x1=1, 3x1=2, 2x2=3
-
-        const multModeMap = { '1x1': 0, '2x1': 1, '3x1': 2, '2x2': 3 };
-
-        const multModeNum = multModeMap[digits.multiplication] || 0;
-
-        
-
-        const digitsPacked = (digits.addition - 1) + 
-
-                            ((digits.subtraction - 1) * 4) + 
-
-                            (multModeNum * 16) + 
-
-                            ((digits.division - 1) * 64);
-
-        
-
-        // Format: score.seed.count.ops.digits.time (all base36)
-
-        return `${percentage.toString(36)}.${challengeSeed.toString(36)}.${total.toString(36)}.${opBits.toString(36)}.${digitsPacked.toString(36)}.${timeTaken.toString(36)}`;
-
+        const timeTaken = Math.round((endTime - startTime) / 1000);
+        return encodeChallengeFromData(percentage, challengeSeed, total, operations, digits, timeTaken);
       };
-
       
-
       const decodeChallenge = (code) => {
-
         try {
-
           const parts = code.split('.');
-
           if (parts.length < 5 || parts.length > 6) throw new Error('Invalid format');
-
           
-
           const [scoreStr, seedStr, countStr, opsStr, digitsStr, timeStr] = parts;
-
           
-
           const creatorScore = parseInt(scoreStr, 36);
-
           const seed = parseInt(seedStr, 36);
-
           const count = parseInt(countStr, 36);
-
           const opBits = parseInt(opsStr, 36);
-
           const digitsPacked = parseInt(digitsStr, 36);
-
-          const creatorTime = timeStr ? parseInt(timeStr, 36) : null; // seconds
-
+          const creatorTime = timeStr ? parseInt(timeStr, 36) : null;
           
-
           const ops = {
-
-            addition: !!(opBits & 1),
-
-            subtraction: !!(opBits & 2),
-
-            multiplication: !!(opBits & 4),
-
-            division: !!(opBits & 8)
-
+            addition: !!(opBits & 1), subtraction: !!(opBits & 2),
+            multiplication: !!(opBits & 4), division: !!(opBits & 8)
           };
-
-          
-
-          // Map number back to multiplication mode
-
           const multModes = ['1x1', '2x1', '3x1', '2x2'];
-
-          
-
           const digs = {
-
             addition: (digitsPacked % 4) + 1,
-
             subtraction: (Math.floor(digitsPacked / 4) % 4) + 1,
-
             multiplication: multModes[Math.floor(digitsPacked / 16) % 4],
-
             division: (Math.floor(digitsPacked / 64) % 4) + 1
-
           };
-
           
-
           const questions = generateQuestionsFromSeed(seed, count, ops, digs);
-
           
-
           return {
-
-            questions,
-
-            seed,
-
-            ops,
-
-            digs,
-
-            mode: 'questions',
-
-            creator: 'Friend',
-
-            creatorScore,
-
-            creatorTime
-
+            questions, seed, ops, digs, mode: 'questions',
+            creator: 'Friend', creatorScore, creatorTime
           };
-
         } catch (e) {
-
           console.error('Failed to decode challenge:', e);
-
           return null;
-
         }
-
       };
-
       
-
-            // Short-code challenge system (6-char base62 codes stored in Firestore)
-
+      // --- FIRESTORE SHORT-CODE SYSTEM ---
       const generateChallengeCode = (length = 6) => {
-
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-
         let code = '';
-
-        for (let i = 0; i < length; i++) {
-
-          code += chars.charAt(Math.floor(Math.random() * chars.length));
-
-        }
-
+        for (let i = 0; i < length; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
         return code;
-
       };
-
-
 
       const createChallengeDoc = async (payload) => {
-
         const challengesRef = db.collection('challenges');
-
-
-
-        // Try a few times to avoid collisions (extremely unlikely)
-
+        // Try up to 5 times to avoid ID collision
         for (let attempt = 0; attempt < 5; attempt++) {
-
           const code = generateChallengeCode(6);
-
           const docRef = challengesRef.doc(code);
-
           const existing = await docRef.get();
-
           if (existing.exists) continue;
 
-
-
           await docRef.set({
-
             ...payload,
-
             plays: 0,
-
             isPublic: true,
-
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-
-            expiresAt: firebase.firestore.Timestamp.fromDate(
-
-              new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-
-            )
-
+            expiresAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
           });
-
-
-
           return code;
-
         }
-
-
-
         throw new Error('Could not generate a unique challenge code. Please try again.');
-
       };
-
-
 
       const createChallenge = async (sessionOverride = null) => {
-
         try {
-
           const name = user?.displayName || playerName || 'Someone';
 
-
-
-          // Pull data either from a past session (Progress) or the current run (Results)
-
+          // Data source: sessionOverride (from history) OR current run state
           const seed = Number(sessionOverride?.seed ?? challengeSeed);
-
           const ops = sessionOverride?._opsObj ?? sessionOverride?.operations ?? operations;
-
           const digs = sessionOverride?._digits ?? sessionOverride?.digits ?? digits;
-
           const count = Number(sessionOverride?.questionCount ?? sessionOverride?._total ?? questionCount ?? 20);
 
-
-
-          // FIX 2: Correctly calculate current score and time if no sessionOverride
-
+          // Calculate current stats if no sessionOverride
           const currentScore = results.length > 0 
-
             ? Math.round((results.filter(r => r.isCorrect).length / results.length) * 100) 
-
             : 0;
-
-
-
           const currentTimeSeconds = (startTime && endTime) 
-
             ? Math.round((endTime - startTime) / 1000) 
-
             : 0;
 
-
-
-          const creatorScore =
-
-            Number(sessionOverride?._pct ?? sessionOverride?.score ?? currentScore);
-
-          
-
-          const creatorTime =
-
-            Number(sessionOverride?._timeSeconds ?? sessionOverride?.time ?? currentTimeSeconds);
-
-
+          const creatorScore = Number(sessionOverride?._pct ?? sessionOverride?.score ?? currentScore);
+          const creatorTime = Number(sessionOverride?._timeSeconds ?? sessionOverride?.time ?? currentTimeSeconds);
 
           if (!seed || !ops || !digs || !count) {
-
-            setShareMessage('This session is missing challenge data (seed/settings).');
-
+            setShareMessage('Missing challenge data.');
             setTimeout(() => setShareMessage(''), 3000);
-
             return;
-
           }
-
-
 
           const code = await createChallengeDoc({
-
             ownerUserId: user?.uid || null,
-
             sessionId: sessionOverride?.id || null,
-
             creatorName: name,
-
-            creatorScore,
-
-            creatorTime,
-
-            seed,
-
-            operations: ops,
-
-            digits: digs,
-
-            questionCount: count,
-
+            creatorScore, creatorTime, seed,
+            operations: ops, digits: digs, questionCount: count,
             generatorVersion: 1
-
           });
 
-
-
           const challengeUrl = buildChallengeUrl(code);
-
-          const challengeText =
-
-`🎯 ${name} challenges you!
-
-
-
-Code: ${code}
-
-
-
-Beat ${creatorScore}% to win!
-
-
-
-${challengeUrl}`;
-
-
+          const challengeText = `🎯 ${name} challenges you!\n\nCode: ${code}\nBeat ${creatorScore}% to win!\n\n${challengeUrl}`;
 
           if (navigator.share) {
-
-            try {
-
-              await navigator.share({
-
-                title: 'Math Challenge',
-
-                text: challengeText,
-
-                url: challengeUrl
-
-              });
-
-            } catch (e) {
-
-              if (e.name !== 'AbortError') {
-
-                await copyToClipboard(challengeText);
-
-                setShareMessage('Challenge copied to clipboard!');
-
-                setTimeout(() => setShareMessage(''), 2000);
-
-              }
-
-            }
-
+            try { await navigator.share({ title: 'Math Challenge', text: challengeText, url: challengeUrl }); }
+            catch (e) { if (e.name !== 'AbortError') await copyToClipboard(challengeText); }
           } else {
-
             await copyToClipboard(challengeText);
-
-            setShareMessage('Challenge copied to clipboard!');
-
-            setTimeout(() => setShareMessage(''), 2000);
-
           }
-
-
-
-          // For the current run, also stash the code so it shows in saved session data
-
+          setShareMessage('Challenge copied!');
+          setTimeout(() => setShareMessage(''), 2000);
           setGeneratedChallengeCode(code);
-
-
-
           return { code, url: challengeUrl };
-
         } catch (e) {
-
           console.error('Failed to create challenge:', e);
-
-          setShareMessage('Could not create challenge. Please try again.');
-
+          setShareMessage('Error creating challenge.');
           setTimeout(() => setShareMessage(''), 3000);
-
         }
-
       };
 
-
-
-      // Start challenge from a code (used by URL param and manual input)
-
-const isShortChallengeCode = (c) => /^[A-Za-z0-9]{6}$/.test((c || '').trim());
-
-
-
-const fetchChallengeDoc = async (code) => {
-
-  const c = (code || '').trim();
-
-  if (!c) return null;
-
-  try {
-
-    const doc = await db.collection('challenges').doc(c).get();
-
-    if (!doc.exists) return null;
-
-    const data = doc.data() || {};
-
-    // Basic expiry guard
-
-    if (data.expiresAt && data.expiresAt.toDate && data.expiresAt.toDate() < new Date()) {
-
-      return null;
-
-    }
-
-    return { id: doc.id, ...data };
-
-  } catch (e) {
-
-    console.error('Failed to load challenge doc:', e);
-
-    return null;
-
-  }
-
-};
-
-
-
-const startChallengeFromCode = async (code) => {
-
-  let raw = (code || '').trim();
-
-  if (!raw) return false;
-
-
-
-  // Allow pasting a full URL containing ?c=XXXXXX
-
-  if (raw.includes('c=')) {
-
-    try {
-
-      const u = new URL(raw);
-
-      const c = u.searchParams.get('c');
-
-      if (c) raw = c.trim();
-
-    } catch (e) {
-
-      // Not a valid URL, fall through
-
-    }
-
-  }
-
-
-
-  // New short-code challenges live in Firestore
-
-  if (isShortChallengeCode(raw)) {
-
-    const ch = await fetchChallengeDoc(raw);
-
-    if (!ch) return false;
-
-
-
-    const ops = ch.operations || ch.ops || operations;
-
-    const digs = ch.digits || ch.digs || digits;
-
-    const count = Number(ch.questionCount || ch.count || 20);
-
-    const seed = Number(ch.seed);
-
-
-
-    if (!seed || !ops || !digs) return false;
-
-
-
-    const qs = generateQuestionsFromSeed(seed, count, ops, digs);
-
-    if (!qs.length) return false;
-
-
-
-    setChallengeMode(true);
-
-    setChallengeCreator(ch.creatorName || ch.creator || 'Friend');
-
-    setChallengeScore(Number(ch.creatorScore || ch.score || 0));
-
-    setChallengeTime(Number(ch.creatorTime || ch.time || 0));
-
-    setChallengeSeed(seed);
-
-
-
-    setOperations(ops);
-
-    setDigits(digs);
-
-
-
-    setQuestions(qs);
-
-    setQuestionCount(qs.length);
-
-    setMode('questions');
-
-
-
-    setCurrentIndex(0);
-
-    setScore(0);
-
-    setTotalCorrect(0);
-
-    setCurrentStreak(0);
-
-    setMaxStreak(0);
-
-    setPoints(0);
-
-    setFeedback(null);
-
-
-
-    // Clear URL parameter
-
-    window.history.replaceState({}, '', window.location.pathname);
-
-
-
-    setStage('practicing');
-
-
-
-    // Optional: increment plays (non-critical)
-
-    try {
-
-      db.collection('challenges').doc(raw).update({
-
-        plays: firebase.firestore.FieldValue.increment(1)
-
-      });
-
-    } catch (e) {}
-
-
-
-    return true;
-
-  }
-
-
-
-  // Backwards compatibility: old long challenge strings
-
-  const decoded = decodeChallenge(raw);
-
-  if (!decoded) return false;
-
-
-
-  setChallengeMode(true);
-
-  setChallengeCreator(decoded.creator);
-
-  setChallengeScore(decoded?.creatorScore);
-
-  setChallengeTime(decoded?.creatorTime);
-
-  setChallengeSeed(decoded.seed);
-
-  setQuestions(decoded?.questions);
-
-  setQuestionCount(decoded?.questions.length);
-
-  setMode('questions');
-
-  setOperations(decoded.ops);
-
-  setDigits(decoded.digs);
-
-
-
-  setCurrentIndex(0);
-
-  setScore(0);
-
-  setTotalCorrect(0);
-
-  setCurrentStreak(0);
-
-  setMaxStreak(0);
-
-  setPoints(0);
-
-  setFeedback(null);
-
-
-
-  window.history.replaceState({}, '', window.location.pathname);
-
-
-
-  setStage('practicing');
-
-  return true;
-
-};
-
-
-
-const startChallenge = async () => {
-
-  const ok = await startChallengeFromCode(challengeCodeInput);
-
-  if (!ok) {
-
-    setShareMessage('Invalid or expired challenge code! 😕');
-
-    setTimeout(() => setShareMessage(''), 3000);
-
-  }
-
-};      
-
-      const retryMissed = () => {
-
-        const missed = results.filter(r => !r.isCorrect);
-
-        if (missed.length === 0) return;
-
-        
-
-        const newQuestions = missed.map(q => ({
-
-          num1: q.num1,
-
-          num2: q.num2,
-
-          symbol: q.symbol,
-
-          correctAnswer: q.correctAnswer,
-
-          operation: q.operation,
-
-          digits: q.digits
-
-        }));
-
-        
-
-        // Pad with more questions if needed
-
-        while (newQuestions.length < 5) {
-
-          newQuestions.push(generateQuestion(digits));
-
+      // --- HANDLING INCOMING CHALLENGES ---
+      const isShortChallengeCode = (c) => /^[A-Za-z0-9]{6}$/.test((c || '').trim());
+
+      const fetchChallengeDoc = async (code) => {
+        const c = (code || '').trim();
+        if (!c) return null;
+        try {
+          const doc = await db.collection('challenges').doc(c).get();
+          if (!doc.exists) return null;
+          const data = doc.data() || {};
+          // Expiry Check
+          if (data.expiresAt && data.expiresAt.toDate && data.expiresAt.toDate() < new Date()) return null;
+          return { id: doc.id, ...data };
+        } catch (e) {
+          console.error('Failed to load challenge doc:', e);
+          return null;
+        }
+      };
+
+      const startChallengeFromCode = async (code) => {
+        let raw = (code || '').trim();
+        if (!raw) return false;
+
+        // Parse URL if pasted directly
+        if (raw.includes('c=')) {
+          try {
+            const u = new URL(raw);
+            const c = u.searchParams.get('c');
+            if (c) raw = c.trim();
+          } catch (e) {}
         }
 
-        
+        // Case 1: Short Code (Firestore)
+        if (isShortChallengeCode(raw)) {
+          const ch = await fetchChallengeDoc(raw);
+          if (!ch) return false;
 
-        setQuestions(newQuestions);
+          const ops = ch.operations || ch.ops || operations;
+          const digs = ch.digits || ch.digs || digits;
+          const count = Number(ch.questionCount || ch.count || 20);
+          const seed = Number(ch.seed);
 
-        setQuestionCount(newQuestions.length);
+          if (!seed || !ops || !digs) return false;
 
+          const qs = generateQuestionsFromSeed(seed, count, ops, digs);
+          if (!qs.length) return false;
+
+          setChallengeMode(true);
+          setChallengeCreator(ch.creatorName || ch.creator || 'Friend');
+          setChallengeScore(Number(ch.creatorScore || ch.score || 0));
+          setChallengeTime(Number(ch.creatorTime || ch.time || 0));
+          setChallengeSeed(seed);
+          setOperations(ops);
+          setDigits(digs);
+          setQuestions(qs);
+          setQuestionCount(qs.length);
+          setMode('questions');
+          setCurrentIndex(0);
+          setResults([]);
+          setStreak(0);
+          setMaxStreak(0);
+          setPoints(0);
+          setFeedback(null);
+
+          window.history.replaceState({}, '', window.location.pathname);
+          setStage('practicing');
+          
+          try {
+            db.collection('challenges').doc(raw).update({ plays: firebase.firestore.FieldValue.increment(1) });
+          } catch (e) {}
+          return true;
+        }
+
+        // Case 2: Legacy Long Code (URL Params)
+        const decoded = decodeChallenge(raw);
+        if (!decoded) return false;
+
+        setChallengeMode(true);
+        setChallengeCreator(decoded.creator);
+        setChallengeScore(decoded?.creatorScore);
+        setChallengeTime(decoded?.creatorTime);
+        setChallengeSeed(decoded.seed);
+        setQuestions(decoded?.questions);
+        setQuestionCount(decoded?.questions.length);
         setMode('questions');
-
+        setOperations(decoded.ops);
+        setDigits(decoded.digs);
         setCurrentIndex(0);
-
         setResults([]);
-
-        setAnswer('');
-
-        setStartTime(Date.now());
-
-        setEndTime(null);
-
         setStreak(0);
-
         setMaxStreak(0);
-
         setPoints(0);
-
         setFeedback(null);
 
+        window.history.replaceState({}, '', window.location.pathname);
         setStage('practicing');
-
+        return true;
       };
 
+      const startChallenge = async () => {
+        const ok = await startChallengeFromCode(challengeCodeInput);
+        if (!ok) {
+          setShareMessage('Invalid or expired code! 😕');
+          setTimeout(() => setShareMessage(''), 3000);
+        }
+      };      
+      
+      const retryMissed = () => {
+        const missed = results.filter(r => !r.isCorrect);
+        if (missed.length === 0) return;
+        
+        const newQuestions = missed.map(q => ({
+          num1: q.num1, num2: q.num2, symbol: q.symbol, correctAnswer: q.correctAnswer, operation: q.operation, digits: q.digits
+        }));
+        
+        while (newQuestions.length < 5) newQuestions.push(generateQuestion(digits));
+        
+        setQuestions(newQuestions);
+        setQuestionCount(newQuestions.length);
+        setMode('questions');
+        setCurrentIndex(0);
+        setResults([]);
+        setAnswer('');
+        setStartTime(Date.now());
+        setEndTime(null);
+        setStreak(0);
+        setMaxStreak(0);
+        setPoints(0);
+        setFeedback(null);
+        setStage('practicing');
+      };
 
-
-
-
-      // History view
-
+      // --- RENDERING: HISTORY VIEW ---
       if (showHistory) {
-
         const localHistory = getHistory();
-
-
-
-        // Prefer Firestore sessions when signed in, otherwise fall back to localStorage history
-
         const sessionsRaw = user ? (userSessions || []) : localHistory;
 
-
-
         const normalizeSession = (s) => {
-
           const ts = s.timestamp?.toDate ? s.timestamp.toDate() : (s.date ? new Date(s.date) : new Date());
-
           const opsArr = Array.isArray(s.operations) ? s.operations : (s.operations ? [s.operations] : []);
-
           const opsObj = {
-
-            addition: opsArr.includes('addition'),
-
-            subtraction: opsArr.includes('subtraction'),
-
-            multiplication: opsArr.includes('multiplication'),
-
-            division: opsArr.includes('division')
-
+            addition: opsArr.includes('addition'), subtraction: opsArr.includes('subtraction'),
+            multiplication: opsArr.includes('multiplication'), division: opsArr.includes('division')
           };
-
           const digs = s.digits || digits;
-
           const pct = (s.score ?? s.percentage) ?? 0;
-
           const total = s.total ?? s.questionCount ?? 0;
-
           const timeSeconds = s.time ?? s.timeTaken ?? 0;
-
-          
-
-          // FIX 3: Removed fallback to long string. Only show if short code exists.
-
           const code = s.challengeCode || null; 
-
-          
-
           const url = code ? buildChallengeUrl(code) : null;
 
-
-
           return {
-
-            ...s,
-
-            _dateObj: ts,
-
-            _opsArr: opsArr,
-
-            _opsObj: opsObj,
-
-            _digits: digs,
-
-            _pct: pct,
-
-            _total: total,
-
-            _timeSeconds: timeSeconds,
-
-            _code: code,
-
-            _url: url
-
+            ...s, _dateObj: ts, _opsArr: opsArr, _opsObj: opsObj, _digits: digs, _pct: pct,
+            _total: total, _timeSeconds: timeSeconds, _code: code, _url: url
           };
-
         };
 
-
-
         const sessions = sessionsRaw
-
           .map(normalizeSession)
-
           .sort((a,b) => (b._dateObj?.getTime?.() || 0) - (a._dateObj?.getTime?.() || 0));
 
-
-
         const avgPct = sessions.length ? Math.round(sessions.reduce((sum, s) => sum + Number(s._pct || 0), 0) / sessions.length) : 0;
-
         const bestPct = sessions.length ? Math.max(...sessions.map(s => Number(s._pct || 0))) : 0;
-
         const bestPoints = sessions.length ? Math.max(...sessions.map(s => Number(s.points || 0))) : 0;
-
         const bestStreak = sessions.length ? Math.max(...sessions.map(s => Number(s.streak || s.maxStreak || 0))) : 0;
-
-
 
         const toggleExpand = (id) => setExpandedSessionId(expandedSessionId === id ? null : id);
 
-
-
         const shareOrCopyChallenge = async (session) => {
-
-  const hasSeed = session && (session.seed || session._seed);
-
-  if (!hasSeed) {
-
-    setProgressMessage('This session cannot be challenged (missing seed).');
-
-    setTimeout(() => setProgressMessage(''), 2500);
-
-    return;
-
-  }
-
-
-
-  const res = await createChallenge(session);
-
-  if (res && res.code) {
-
-    setProgressMessage(`Challenge created! Code: ${res.code}`);
-
-    setTimeout(() => setProgressMessage(''), 3000);
-
-  }
-
-};
-
-
+          const hasSeed = session && (session.seed || session._seed);
+          if (!hasSeed) {
+            setProgressMessage('This session cannot be challenged (missing seed).');
+            setTimeout(() => setProgressMessage(''), 2500);
+            return;
+          }
+          const res = await createChallenge(session);
+          if (res && res.code) {
+            setProgressMessage(`Challenge created! Code: ${res.code}`);
+            setTimeout(() => setProgressMessage(''), 3000);
+          }
+        };
 
         return (
-
           <div className="min-h-screen bg-gradient-to-br from-indigo-400 via-purple-300 to-pink-200 p-6">
-
             <div className="max-w-3xl mx-auto bg-white rounded-3xl shadow-2xl p-8">
-
               <div className="flex justify-between items-center mb-6">
-
                 <div>
-
                   <h1 className="text-3xl font-bold text-purple-600">📊 Your Progress</h1>
-
-                  <p className="text-sm text-gray-500 mt-1">
-
-                    {user ? 'Showing your signed-in sessions' : 'Sign in to sync your sessions across devices'}
-
-                  </p>
-
+                  <p className="text-sm text-gray-500 mt-1">{user ? 'Showing your signed-in sessions' : 'Sign in to sync your sessions across devices'}</p>
                 </div>
-
-                <button
-
-                  onClick={() => setShowHistory(false)}
-
-                  className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
-
-                >
-
-                  Back
-
-                </button>
-
+                <button onClick={() => setShowHistory(false)} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Back</button>
               </div>
 
-
-
-              {progressMessage && (
-
-                <div className="mb-4 p-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm">
-
-                  {progressMessage}
-
-                </div>
-
-              )}
-
-
-
-              {user && userSessionsLoading && (
-
-                <p className="text-gray-500 text-center py-6">Loading your sessions...</p>
-
-              )}
-
-
-
-              {user && userSessionsError && (
-
-                <p className="text-red-500 text-center py-6">Could not load sessions. Check the console for details.</p>
-
-              )}
-
-
+              {progressMessage && <div className="mb-4 p-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm">{progressMessage}</div>}
+              {user && userSessionsLoading && <p className="text-gray-500 text-center py-6">Loading your sessions...</p>}
+              {user && userSessionsError && <p className="text-red-500 text-center py-6">Could not load sessions.</p>}
 
               {sessions.length === 0 ? (
-
                 <p className="text-gray-500 text-center py-8">No practice sessions yet. Start practicing to see your progress!</p>
-
               ) : (
-
                 <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
-
                   {sessions.map((session) => {
-
                     const id = session.id || session.date || session._dateObj?.toISOString();
-
                     const expanded = expandedSessionId === id;
-
-
-
-                    const opsLabel = session._opsArr.length
-
-                      ? session._opsArr.map(op => op.charAt(0).toUpperCase() + op.slice(1)).join(', ')
-
-                      : 'Mixed';
-
-
-
+                    const opsLabel = session._opsArr.length ? session._opsArr.map(op => op.charAt(0).toUpperCase() + op.slice(1)).join(', ') : 'Mixed';
                     const timeLabel = `${Math.floor(session._timeSeconds / 60)}:${(session._timeSeconds % 60).toString().padStart(2, '0')}`;
 
-
-
                     return (
-
                       <div key={id} className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-
                         <div className="flex justify-between items-start gap-4">
-
                           <div className="min-w-0">
-
                             <div className="font-semibold text-gray-800 truncate">{opsLabel}</div>
-
-                            <div className="text-sm text-gray-500">
-
-                              {session._dateObj.toLocaleString()} • {session._total} questions • ⏱ {timeLabel}
-
-                            </div>
-
+                            <div className="text-sm text-gray-500">{session._dateObj.toLocaleString()} • {session._total} questions • ⏱ {timeLabel}</div>
                           </div>
-
                           <div className="text-right flex-shrink-0">
-
-                            <div className={`text-2xl font-bold ${
-
-                              session._pct >= 80 ? 'text-green-600' : session._pct >= 50 ? 'text-yellow-500' : 'text-red-500'
-
-                            }`}>
-
-                              {session._pct}%
-
-                            </div>
-
-                            <div className="text-sm text-gray-500">
-
-                              ⭐ {session.points || 0} pts • 🔥 {session.streak || session.maxStreak || 0}
-
-                            </div>
-
+                            <div className={`text-2xl font-bold ${session._pct >= 80 ? 'text-green-600' : session._pct >= 50 ? 'text-yellow-500' : 'text-red-500'}`}>{session._pct}%</div>
+                            <div className="text-sm text-gray-500">⭐ {session.points || 0} pts • 🔥 {session.streak || session.maxStreak || 0}</div>
                           </div>
-
                         </div>
-
-
-
                         <div className="mt-3 flex flex-wrap gap-2">
-
-                          <button
-
-                            onClick={() => toggleExpand(id)}
-
-                            className="px-3 py-2 rounded-lg bg-white border hover:bg-gray-100 text-sm"
-
-                          >
-
-                            {expanded ? 'Hide details' : 'View details'}
-
-                          </button>
-
-
-
-                          <button
-
-                            onClick={() => shareOrCopyChallenge(session)}
-
-                            disabled={false} // Always allow trying to create/share
-
-                            className="px-3 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-semibold hover:from-purple-600 hover:to-pink-600"
-
-                          >
-
-                            🎯 Challenge a friend
-
-                          </button>
-
-
-
+                          <button onClick={() => toggleExpand(id)} className="px-3 py-2 rounded-lg bg-white border hover:bg-gray-100 text-sm">{expanded ? 'Hide details' : 'View details'}</button>
+                          <button onClick={() => shareOrCopyChallenge(session)} className="px-3 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-semibold hover:from-purple-600 hover:to-pink-600">🎯 Challenge a friend</button>
                           {session._code && (
-
-                            <button
-
-                              onClick={async () => {
-
-                                await copyText(session._code);
-
-                                setProgressMessage('Challenge code copied!');
-
-                                setTimeout(() => setProgressMessage(''), 2000);
-
-                              }}
-
-                              className="px-3 py-2 rounded-lg bg-white border hover:bg-gray-100 text-sm font-mono"
-
-                            >
-
-                              Copy code
-
-                            </button>
-
+                            <button onClick={async () => { await copyText(session._code); setProgressMessage('Challenge code copied!'); setTimeout(() => setProgressMessage(''), 2000); }} className="px-3 py-2 rounded-lg bg-white border hover:bg-gray-100 text-sm font-mono">Copy code</button>
                           )}
-
                         </div>
-
-
-
                         {expanded && (
-
                           <div className="mt-4 bg-white rounded-xl p-4 border">
-
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-
-                              <div>
-
-                                <div className="text-gray-500">Correct</div>
-
-                                <div className="font-semibold text-gray-800">{session.correct ?? 0} / {session._total}</div>
-
-                              </div>
-
-                              <div>
-
-                                <div className="text-gray-500">Points</div>
-
-                                <div className="font-semibold text-gray-800">{session.points ?? 0}</div>
-
-                              </div>
-
-                              <div>
-
-                                <div className="text-gray-500">Max streak</div>
-
-                                <div className="font-semibold text-gray-800">{session.streak ?? session.maxStreak ?? 0}</div>
-
-                              </div>
-
-                              <div>
-
-                                <div className="text-gray-500">Mode</div>
-
-                                <div className="font-semibold text-gray-800">{session.mode || 'questions'}</div>
-
-                              </div>
-
-                              <div>
-
-                                <div className="text-gray-500">Adaptive</div>
-
-                                <div className="font-semibold text-gray-800">{session.adaptiveDifficulty ? 'On' : 'Off'}</div>
-
-                              </div>
-
-                              <div>
-
-                                <div className="text-gray-500">Seed</div>
-
-                                <div className="font-semibold text-gray-800 font-mono">{session.seed ?? '—'}</div>
-
-                              </div>
-
+                              <div><div className="text-gray-500">Correct</div><div className="font-semibold text-gray-800">{session.correct ?? 0} / {session._total}</div></div>
+                              <div><div className="text-gray-500">Points</div><div className="font-semibold text-gray-800">{session.points ?? 0}</div></div>
+                              <div><div className="text-gray-500">Max streak</div><div className="font-semibold text-gray-800">{session.streak ?? session.maxStreak ?? 0}</div></div>
+                              <div><div className="text-gray-500">Mode</div><div className="font-semibold text-gray-800">{session.mode || 'questions'}</div></div>
+                              <div><div className="text-gray-500">Adaptive</div><div className="font-semibold text-gray-800">{session.adaptiveDifficulty ? 'On' : 'Off'}</div></div>
+                              <div><div className="text-gray-500">Seed</div><div className="font-semibold text-gray-800 font-mono">{session.seed ?? '—'}</div></div>
                             </div>
-
-
-
                             {session._url && (
-
                               <div className="mt-4">
-
                                 <div className="text-xs text-gray-500 mb-1">Challenge link</div>
-
                                 <div className="flex gap-2">
-
-                                  <input
-
-                                    readOnly
-
-                                    value={session._url}
-
-                                    className="w-full px-3 py-2 rounded-lg border text-xs text-gray-700"
-
-                                  />
-
-                                  <button
-
-                                    onClick={async () => {
-
-                                      await copyText(session._url);
-
-                                      setProgressMessage('Challenge link copied!');
-
-                                      setTimeout(() => setProgressMessage(''), 2000);
-
-                                    }}
-
-                                    className="px-3 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-sm"
-
-                                  >
-
-                                    Copy
-
-                                  </button>
-
+                                  <input readOnly value={session._url} className="w-full px-3 py-2 rounded-lg border text-xs text-gray-700" />
+                                  <button onClick={async () => { await copyText(session._url); setProgressMessage('Link copied!'); setTimeout(() => setProgressMessage(''), 2000); }} className="px-3 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-sm">Copy</button>
                                 </div>
-
                               </div>
-
                             )}
-
                           </div>
-
                         )}
-
                       </div>
-
                     );
-
                   })}
-
                 </div>
-
               )}
-
-
-
+              {/* Stats Footer */}
               <div className="mt-6 pt-6 border-t">
-
                 <h3 className="font-semibold text-gray-700 mb-3">All-Time Stats</h3>
-
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-
-                  <div className="bg-purple-100 rounded-lg p-3">
-
-                    <div className="text-2xl font-bold text-purple-600">{sessions.length}</div>
-
-                    <div className="text-sm text-gray-600">Sessions</div>
-
-                  </div>
-
-                  <div className="bg-green-100 rounded-lg p-3">
-
-                    <div className="text-2xl font-bold text-green-600">{avgPct}%</div>
-
-                    <div className="text-sm text-gray-600">Avg score</div>
-
-                  </div>
-
-                  <div className="bg-blue-100 rounded-lg p-3">
-
-                    <div className="text-2xl font-bold text-blue-600">{bestPoints}</div>
-
-                    <div className="text-sm text-gray-600">Best points</div>
-
-                  </div>
-
-                  <div className="bg-orange-100 rounded-lg p-3">
-
-                    <div className="text-2xl font-bold text-orange-600">{bestStreak}</div>
-
-                    <div className="text-sm text-gray-600">Best streak</div>
-
-                  </div>
-
+                  <div className="bg-purple-100 rounded-lg p-3"><div className="text-2xl font-bold text-purple-600">{sessions.length}</div><div className="text-sm text-gray-600">Sessions</div></div>
+                  <div className="bg-green-100 rounded-lg p-3"><div className="text-2xl font-bold text-green-600">{avgPct}%</div><div className="text-sm text-gray-600">Avg score</div></div>
+                  <div className="bg-blue-100 rounded-lg p-3"><div className="text-2xl font-bold text-blue-600">{bestPoints}</div><div className="text-sm text-gray-600">Best points</div></div>
+                  <div className="bg-orange-100 rounded-lg p-3"><div className="text-2xl font-bold text-orange-600">{bestStreak}</div><div className="text-sm text-gray-600">Best streak</div></div>
                 </div>
-
-                {bestPct > 0 && (
-
-                  <p className="text-xs text-gray-500 mt-3 text-center">Best score: {bestPct}%</p>
-
-                )}
-
               </div>
-
             </div>
-
           </div>
-
         );
-
       }
 
-
-
-
-
-
-
-      // Leaderboard view
-
+      // --- RENDERING: LEADERBOARD VIEW ---
       if (showLeaderboard) {
-
         return (
-
           <div className="min-h-screen bg-gradient-to-br from-yellow-400 via-orange-300 to-red-300 p-6">
-
             <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-2xl p-8">
-
               <div className="flex justify-between items-center mb-6">
-
                 <h1 className="text-3xl font-bold text-orange-600">🏆 Leaderboard</h1>
-
                 <div className="flex gap-2">
-
-                  <button
-
-                    onClick={refreshLeaderboard}
-
-                    className="px-4 py-2 bg-orange-100 text-orange-600 rounded-lg hover:bg-orange-200"
-
-                  >
-
-                    🔄
-
-                  </button>
-
-                  <button
-
-                    onClick={() => setShowLeaderboard(false)}
-
-                    className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
-
-                  >
-
-                    Back
-
-                  </button>
-
+                  <button onClick={refreshLeaderboard} className="px-4 py-2 bg-orange-100 text-orange-600 rounded-lg hover:bg-orange-200">🔄</button>
+                  <button onClick={() => setShowLeaderboard(false)} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Back</button>
                 </div>
-
               </div>
-
               
-
-              {/* Auth section */}
-
+              {/* Auth Panel */}
               <div className="mb-6 p-4 bg-gray-50 rounded-xl">
-
                 {user ? (
-
                   <div className="flex items-center justify-between">
-
                     <div className="flex items-center gap-3">
-
-                      {user.photoURL && (
-
-                        <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full" />
-
-                      )}
-
-                      <div>
-
-                        <div className="font-semibold text-gray-700">{user.displayName}</div>
-
-                        <div className="text-sm text-gray-500">Scores are being saved!</div>
-
-                      </div>
-
+                      {user.photoURL && <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full" />}
+                      <div><div className="font-semibold text-gray-700">{user.displayName}</div><div className="text-sm text-gray-500">Scores are being saved!</div></div>
                     </div>
-
-                    <button
-
-                      onClick={signOut}
-
-                      className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm"
-
-                    >
-
-                      Sign Out
-
-                    </button>
-
+                    <button onClick={signOut} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm">Sign Out</button>
                   </div>
-
                 ) : (
-
                   <div className="text-center">
-
-                    <p className="text-gray-600 mb-3">Sign in to save your scores to the leaderboard!</p>
-
-                    <button
-
-                      onClick={signInWithGoogle}
-
-                      className="px-6 py-3 bg-white border-2 border-gray-300 rounded-xl font-semibold hover:bg-gray-50 flex items-center gap-3 mx-auto"
-
-                    >
-
-                      <svg className="w-5 h-5" viewBox="0 0 24 24">
-
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-
-                      </svg>
-
-                      Sign in with Google
-
+                    <p className="text-gray-600 mb-3">Sign in to save your scores!</p>
+                    <button onClick={signInWithGoogle} className="px-6 py-3 bg-white border-2 border-gray-300 rounded-xl font-semibold hover:bg-gray-50 flex items-center gap-3 mx-auto">
+                      <span className="text-gray-600 text-sm">Sign in with Google</span>
                     </button>
-
                   </div>
-
                 )}
-
               </div>
 
-              
-
-              
-
-
-
+              {/* Filters */}
               <div className="flex gap-2 justify-center mb-4">
-
-                <button
-
-                  onClick={() => setLeaderboardMetric('score')}
-
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-
-                    leaderboardMetric === 'score' ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-
-                  }`}
-
-                >
-
-                  Score %
-
-                </button>
-
-                <button
-
-                  onClick={() => setLeaderboardMetric('points')}
-
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-
-                    leaderboardMetric === 'points' ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-
-                  }`}
-
-                >
-
-                  Points
-
-                </button>
-
-                <button
-
-                  onClick={() => setLeaderboardMetric('streak')}
-
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-
-                    leaderboardMetric === 'streak' ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-
-                  }`}
-
-                >
-
-                  Streak
-
-                </button>
-
+                {['score', 'points', 'streak'].map(m => (
+                  <button key={m} onClick={() => setLeaderboardMetric(m)} className={`px-3 py-2 rounded-lg text-sm font-semibold ${leaderboardMetric === m ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}>
+                    {m.charAt(0).toUpperCase() + m.slice(1)}
+                  </button>
+                ))}
               </div>
 
-{leaderboardLoading ? (
-
-                <p className="text-gray-500 text-center py-8">Loading leaderboard...</p>
-
-              ) : leaderboard.length === 0 ? (
-
-                <p className="text-gray-500 text-center py-8">No scores yet. Be the first!</p>
-
-              ) : (
-
+              {/* List */}
+              {leaderboardLoading ? <p className="text-gray-500 text-center py-8">Loading...</p> : 
+               leaderboard.length === 0 ? <p className="text-gray-500 text-center py-8">No scores yet. Be the first!</p> : (
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-
                   {leaderboard.map((entry, i) => (
-
-                    <div key={entry.id} className={`rounded-lg p-3 flex items-center gap-3 ${
-
-                      i === 0 ? 'bg-yellow-100 border-2 border-yellow-400' :
-
-                      i === 1 ? 'bg-gray-100 border-2 border-gray-300' :
-
-                      i === 2 ? 'bg-orange-100 border-2 border-orange-300' :
-
-                      'bg-gray-50'
-
-                    }`}>
-
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
-
-                        i === 0 ? 'bg-yellow-400 text-yellow-900' :
-
-                        i === 1 ? 'bg-gray-300 text-gray-700' :
-
-                        i === 2 ? 'bg-orange-300 text-orange-800' :
-
-                        'bg-gray-200 text-gray-600'
-
-                      }`}>
-
-                        {i + 1}
-
-                      </div>
-
-                      {entry.userPhoto && (
-
-                        <img src={entry.userPhoto} alt="" className="w-8 h-8 rounded-full" />
-
-                      )}
-
+                    <div key={entry.id} className={`rounded-lg p-3 flex items-center gap-3 ${i === 0 ? 'bg-yellow-100 border-2 border-yellow-400' : 'bg-gray-50'}`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' : 'bg-gray-200 text-gray-600'}`}>{i + 1}</div>
                       <div className="flex-1">
-
                         <div className="font-semibold text-gray-700">{entry.userName}</div>
-
-                        <div className="text-xs text-gray-500">
-
-                          🔥 {entry.streak} streak • ⭐ {entry.points} pts
-
-                        </div>
-
+                        <div className="text-xs text-gray-500">🔥 {entry.streak} streak • ⭐ {entry.points} pts</div>
                       </div>
-
                       <div className="text-right">
-
-                        {leaderboardMetric === 'score' && (
-
-                          <>
-
-                            <div className={`text-xl font-bold ${
-
-                              entry.score >= 90 ? 'text-green-500' :
-
-                              entry.score >= 70 ? 'text-yellow-500' :
-
-                              'text-red-500'
-
-                            }`}>
-
-                              {entry.score}%
-
-                            </div>
-
-                            <div className="text-xs text-gray-500">
-
-                              {(() => {
-
-                                const t = Number(entry.time ?? 0);
-
-                                return `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, '0')}`;
-
-                              })()}
-
-                            </div>
-
-                          </>
-
-                        )}
-
-
-
-                        {leaderboardMetric === 'points' && (
-
-                          <>
-
-                            <div className="text-xl font-bold text-orange-600">
-
-                              {Number(entry.points ?? 0)} pts
-
-                            </div>
-
-                            <div className="text-xs text-gray-500">
-
-                              Score {Number(entry.score ?? 0)}%
-
-                            </div>
-
-                          </>
-
-                        )}
-
-
-
-                        {leaderboardMetric === 'streak' && (
-
-                          <>
-
-                            <div className="text-xl font-bold text-orange-600">
-
-                              {Number(entry.streak ?? 0)}
-
-                            </div>
-
-                            <div className="text-xs text-gray-500">
-
-                              Max streak
-
-                            </div>
-
-                          </>
-
-                        )}
-
+                        {leaderboardMetric === 'score' && <div className="text-xl font-bold text-green-500">{entry.score}%</div>}
+                        {leaderboardMetric === 'points' && <div className="text-xl font-bold text-orange-600">{entry.points} pts</div>}
+                        {leaderboardMetric === 'streak' && <div className="text-xl font-bold text-orange-600">{entry.streak}</div>}
                       </div>
-
                     </div>
-
                   ))}
-
                 </div>
-
               )}
-
             </div>
-
           </div>
-
         );
-
       }
 
-
-
-      // Challenge URL landing screen
-
+      // --- RENDERING: CHALLENGE LANDING PAGE ---
       if (urlChallengeCode && stage === 'setup') {
-
         const isShort = isShortChallengeCode(urlChallengeCode);
-
         const decoded = !isShort ? decodeChallenge(urlChallengeCode) : null;
-
         const isValid = isShort || decoded !== null;
-
         
-
         return (
-
           <div className="min-h-screen bg-gradient-to-br from-yellow-400 via-orange-300 to-red-300 p-6 flex items-center justify-center">
-
             <div className="max-w-md mx-auto bg-white rounded-3xl shadow-2xl p-8 text-center">
-
               <div className="text-6xl mb-4">⚔️</div>
-
               <h1 className="text-3xl font-bold text-gray-800 mb-2">You've Been Challenged!</h1>
-
-              
-
               {isValid ? (
-
                 <>
-
-                  <p className="text-xl text-gray-600 mb-2">
-
-                    Can you beat <span className="font-bold text-orange-600">{decoded?.creatorScore ?? 'their'}%</span>?
-
-                  </p>
-
-                  <p className="text-gray-500 mb-4">
-
-                    {decoded?.questions.length} questions
-
-                    {decoded?.creatorTime && ` • ${Math.floor(decoded?.creatorTime/60)}:${(decoded?.creatorTime%60).toString().padStart(2,'0')}`}
-
-                  </p>
-
-                  {decoded?.creatorScore === 100 && decoded?.creatorTime && (
-
-                    <p className="text-sm text-orange-500 mb-4">
-
-                      Perfect score! Beat their time to win!
-
-                    </p>
-
-                  )}
-
-                  
-
+                  <p className="text-xl text-gray-600 mb-2">Can you beat <span className="font-bold text-orange-600">{decoded?.creatorScore ?? 'their'}%</span>?</p>
+                  <p className="text-gray-500 mb-4">{decoded?.questions.length} questions</p>
                   <div className="mb-6">
-
                     <label className="text-gray-600 block mb-2">Your name:</label>
-
-                    <input
-
-                      type="text"
-
-                      value={playerName}
-
-                      onChange={(e) => setPlayerName(e.target.value)}
-
-                      placeholder="Enter your name"
-
-                      className="px-4 py-2 rounded-lg border-2 border-orange-300 text-orange-700 font-semibold w-full text-center"
-
-                      maxLength={20}
-
-                    />
-
+                    <input type="text" value={playerName} onChange={(e) => setPlayerName(e.target.value)} placeholder="Enter your name" className="px-4 py-2 rounded-lg border-2 border-orange-300 text-orange-700 font-semibold w-full text-center" maxLength={20} />
                   </div>
-
-                  
-
-                  <button
-
-                    onClick={() => startChallengeFromCode(urlChallengeCode)}
-
-                    className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all mb-4"
-
-                  >
-
-                    Accept Challenge! 🎯
-
-                  </button>
-
-                  
-
-                  <button
-
-                    onClick={() => setUrlChallengeCode(null)}
-
-                    className="text-gray-500 hover:text-gray-700"
-
-                  >
-
-                    or go to regular practice →
-
-                  </button>
-
+                  <button onClick={() => startChallengeFromCode(urlChallengeCode)} className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white text-xl font-bold rounded-xl shadow-lg mb-4">Accept Challenge! 🎯</button>
+                  <button onClick={() => setUrlChallengeCode(null)} className="text-gray-500 hover:text-gray-700">or go to regular practice →</button>
                 </>
-
               ) : (
-
                 <>
-
-                  <p className="text-red-500 mb-6">This challenge link is invalid or expired.</p>
-
-                  <button
-
-                    onClick={() => setUrlChallengeCode(null)}
-
-                    className="w-full py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold rounded-xl shadow-lg"
-
-                  >
-
-                    Go to Math Trainer
-
-                  </button>
-
+                  <p className="text-red-500 mb-6">Invalid or expired link.</p>
+                  <button onClick={() => setUrlChallengeCode(null)} className="w-full py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold rounded-xl shadow-lg">Go to Math Trainer</button>
                 </>
-
               )}
-
             </div>
-
           </div>
-
         );
-
       }
 
-
-
-      // Countdown screen
-
+      // --- RENDERING: COUNTDOWN ---
       if (stage === 'countdown') {
-
         return (
-
           <div className="min-h-screen bg-gradient-to-br from-blue-400 via-purple-300 to-pink-200 flex items-center justify-center">
-
             <div className="text-center">
-
-              <div 
-
-                key={countdown}
-
-                className="text-9xl font-bold text-white countdown-pulse"
-
-                style={{ textShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
-
-              >
-
-                {countdown === 0 ? 'GO!' : countdown}
-
-              </div>
-
+              <div key={countdown} className="text-9xl font-bold text-white countdown-pulse" style={{ textShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>{countdown === 0 ? 'GO!' : countdown}</div>
             </div>
-
           </div>
-
         );
-
       }
 
-
-
+      // --- RENDERING: SETUP SCREEN ---
       if (stage === 'setup') {
-
         return (
-
           <div className="min-h-screen bg-gradient-to-br from-purple-400 via-pink-300 to-yellow-200 p-6">
-
             <div className="max-w-xl mx-auto bg-white rounded-3xl shadow-2xl p-8">
-
               <div className="flex justify-between items-center mb-4">
-
                 <h1 className="text-4xl font-bold text-purple-600">🧮 Math Trainer</h1>
-
                 <div className="flex gap-2">
-
-                  <button
-
-                    onClick={() => setShowLeaderboard(true)}
-
-                    className="px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 font-semibold text-sm"
-
-                  >
-
-                    🏆
-
-                  </button>
-
-                  <button
-
-                    onClick={() => setShowHistory(true)}
-
-                    className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200 font-semibold text-sm"
-
-                  >
-
-                    📊
-
-                  </button>
-
+                  <button onClick={() => setShowLeaderboard(true)} className="px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg font-semibold text-sm">🏆</button>
+                  <button onClick={() => setShowHistory(true)} className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg font-semibold text-sm">📊</button>
                 </div>
-
               </div>
-
               
-
-              {/* User auth status */}
-
+              {/* User Status */}
               {user ? (
-
                 <div className="mb-4 p-3 bg-green-50 rounded-xl flex items-center justify-between">
-
-                  <div className="flex items-center gap-2">
-
-                    {user.photoURL && (
-
-                      <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full" />
-
-                    )}
-
-                    <span className="text-green-700 font-medium text-sm">{user.displayName}</span>
-
-                  </div>
-
+                  <div className="flex items-center gap-2">{user.photoURL && <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full" />}<span className="text-green-700 font-medium text-sm">{user.displayName}</span></div>
                   <span className="text-green-600 text-xs">✓ Scores saved</span>
-
                 </div>
-
               ) : (
-
-                <button
-
-                  onClick={signInWithGoogle}
-
-                  className="mb-4 w-full p-3 bg-gray-50 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 transition-all"
-
-                >
-
-                  <svg className="w-5 h-5" viewBox="0 0 24 24">
-
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-
-                  </svg>
-
-                  <span className="text-gray-600 text-sm">Sign in to save scores</span>
-
-                </button>
-
+                <button onClick={signInWithGoogle} className="mb-4 w-full p-3 bg-gray-50 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 transition-all"><span className="text-gray-600 text-sm">Sign in to save scores</span></button>
               )}
-
               
-
+              {/* Operations Selection */}
               <div className="mb-6">
-
                 <h2 className="text-xl font-semibold text-gray-700 mb-4">What do you want to practice?</h2>
-
                 <div className="grid grid-cols-2 gap-3">
-
                   {[
-
-                    { key: 'addition', symbol: '+', color: 'bg-green-100 border-green-400 text-green-700', 
-
-                      options: [1, 2, 3], optionLabels: ['1 digit', '2 digits', '3 digits'] },
-
-                    { key: 'subtraction', symbol: '−', color: 'bg-blue-100 border-blue-400 text-blue-700',
-
-                      options: [1, 2, 3], optionLabels: ['1 digit', '2 digits', '3 digits'] },
-
-                    { key: 'multiplication', symbol: '×', color: 'bg-orange-100 border-orange-400 text-orange-700',
-
-                      options: ['1x1', '2x1', '3x1', '2x2'], optionLabels: ['1×1', '2×1', '3×1', '2×2'] },
-
-                    { key: 'division', symbol: '÷', color: 'bg-pink-100 border-pink-400 text-pink-700',
-
-                      options: [1, 2, 3], optionLabels: ['1 digit', '2 digits', '3 digits'] }
-
-                  ].map(({ key, symbol, color, options, optionLabels }) => (
-
-                    <div 
-
-                      key={key} 
-
-                      className={`rounded-xl border-2 p-3 transition-all ${
-
-                        operations[key] 
-
-                          ? `${color} shadow-md` 
-
-                          : 'bg-gray-50 border-gray-200'
-
-                      }`}
-
-                    >
-
-                      <button
-
-                        onClick={() => setOperations(o => ({ ...o, [key]: !o[key] }))}
-
-                        className={`w-full text-lg font-bold mb-2 ${
-
-                          operations[key] ? '' : 'text-gray-400'
-
-                        }`}
-
-                      >
-
-                        {symbol} {key.charAt(0).toUpperCase() + key.slice(1)}
-
-                      </button>
-
+                    { key: 'addition', symbol: '+', color: 'bg-green-100 border-green-400 text-green-700', options: [1, 2, 3], labels: ['1 digit', '2 digits', '3 digits'] },
+                    { key: 'subtraction', symbol: '−', color: 'bg-blue-100 border-blue-400 text-blue-700', options: [1, 2, 3], labels: ['1 digit', '2 digits', '3 digits'] },
+                    { key: 'multiplication', symbol: '×', color: 'bg-orange-100 border-orange-400 text-orange-700', options: ['1x1', '2x1', '3x1', '2x2'], labels: ['1×1', '2×1', '3×1', '2×2'] },
+                    { key: 'division', symbol: '÷', color: 'bg-pink-100 border-pink-400 text-pink-700', options: [1, 2, 3], labels: ['1 digit', '2 digits', '3 digits'] }
+                  ].map(({ key, symbol, color, options, labels }) => (
+                    <div key={key} className={`rounded-xl border-2 p-3 transition-all ${operations[key] ? `${color} shadow-md` : 'bg-gray-50 border-gray-200'}`}>
+                      <button onClick={() => setOperations(o => ({ ...o, [key]: !o[key] }))} className={`w-full text-lg font-bold mb-2 ${operations[key] ? '' : 'text-gray-400'}`}>{symbol} {key.charAt(0).toUpperCase() + key.slice(1)}</button>
                       <div className="grid grid-cols-2 gap-1">
-
                         {options.map((opt, i) => (
-
-                          <button
-
-                            key={opt}
-
-                            onClick={() => {
-
-                              if (!operations[key]) {
-
-                                setOperations(o => ({ ...o, [key]: true }));
-
-                              }
-
-                              setDigits(dig => ({ ...dig, [key]: opt }));
-
-                            }}
-
-                            className={`px-2 py-1 rounded text-xs font-medium transition-all ${
-
-                              operations[key] && digits[key] === opt
-
-                                ? 'bg-purple-500 text-white'
-
-                                : operations[key]
-
-                                ? 'bg-white/50 text-gray-600 hover:bg-white/80'
-
-                                : 'bg-gray-100 text-gray-400'
-
-                            }`}
-
-                          >
-
-                            {optionLabels[i]}
-
-                          </button>
-
+                          <button key={opt} onClick={() => { if (!operations[key]) setOperations(o => ({ ...o, [key]: true })); setDigits(dig => ({ ...dig, [key]: opt })); }} className={`px-2 py-1 rounded text-xs font-medium transition-all ${operations[key] && digits[key] === opt ? 'bg-purple-500 text-white' : operations[key] ? 'bg-white/50 text-gray-600 hover:bg-white/80' : 'bg-gray-100 text-gray-400'}`}>{labels[i]}</button>
                         ))}
-
                       </div>
-
                     </div>
-
                   ))}
-
                 </div>
-
               </div>
-
               
-
+              {/* Mode Selection */}
               <div className="mb-8">
-
                 <h2 className="text-xl font-semibold text-gray-700 mb-4">Practice mode</h2>
-
                 <div className="flex gap-4 mb-4">
-
-                  <button
-
-                    onClick={() => setMode('questions')}
-
-                    className={`flex-1 p-4 rounded-xl border-2 font-semibold transition-all ${
-
-                      mode === 'questions'
-
-                        ? 'bg-purple-100 border-purple-400 text-purple-700'
-
-                        : 'bg-gray-50 border-gray-200 text-gray-400'
-
-                    }`}
-
-                  >
-
-                    📝 Questions
-
-                  </button>
-
-                  <button
-
-                    onClick={() => setMode('time')}
-
-                    className={`flex-1 p-4 rounded-xl border-2 font-semibold transition-all ${
-
-                      mode === 'time'
-
-                        ? 'bg-purple-100 border-purple-400 text-purple-700'
-
-                        : 'bg-gray-50 border-gray-200 text-gray-400'
-
-                    }`}
-
-                  >
-
-                    ⏱️ Timed
-
-                  </button>
-
+                  <button onClick={() => setMode('questions')} className={`flex-1 p-4 rounded-xl border-2 font-semibold transition-all ${mode === 'questions' ? 'bg-purple-100 border-purple-400 text-purple-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>📝 Questions</button>
+                  <button onClick={() => setMode('time')} className={`flex-1 p-4 rounded-xl border-2 font-semibold transition-all ${mode === 'time' ? 'bg-purple-100 border-purple-400 text-purple-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>⏱️ Timed</button>
                 </div>
-
-                
-
                 {mode === 'questions' ? (
-
-                  <div className="flex items-center justify-center gap-4">
-
-                    <span className="text-gray-600">Number of questions:</span>
-
-                    <select
-
-                      value={questionCount}
-
-                      onChange={(e) => setQuestionCount(parseInt(e.target.value))}
-
-                      className="px-4 py-2 rounded-lg border-2 border-purple-300 text-purple-700 font-semibold"
-
-                    >
-
-                      {[5, 10, 15, 20, 25, 30, 50].map(n => (
-
-                        <option key={n} value={n}>{n}</option>
-
-                      ))}
-
-                    </select>
-
-                  </div>
-
+                  <div className="flex items-center justify-center gap-4"><span className="text-gray-600">Number of questions:</span><select value={questionCount} onChange={(e) => setQuestionCount(parseInt(e.target.value))} className="px-4 py-2 rounded-lg border-2 border-purple-300 text-purple-700 font-semibold">{[5, 10, 15, 20, 25, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 ) : (
-
-                  <div className="flex items-center justify-center gap-4">
-
-                    <span className="text-gray-600">Time limit:</span>
-
-                    <select
-
-                      value={timeLimit}
-
-                      onChange={(e) => setTimeLimit(parseInt(e.target.value))}
-
-                      className="px-4 py-2 rounded-lg border-2 border-purple-300 text-purple-700 font-semibold"
-
-                    >
-
-                      {[30, 60, 90, 120, 180, 300].map(s => (
-
-                        <option key={s} value={s}>{s < 60 ? `${s} seconds` : `${s / 60} minute${s > 60 ? 's' : ''}`}</option>
-
-                      ))}
-
-                    </select>
-
-                  </div>
-
+                  <div className="flex items-center justify-center gap-4"><span className="text-gray-600">Time limit:</span><select value={timeLimit} onChange={(e) => setTimeLimit(parseInt(e.target.value))} className="px-4 py-2 rounded-lg border-2 border-purple-300 text-purple-700 font-semibold">{[30, 60, 90, 120, 180, 300].map(s => <option key={s} value={s}>{s < 60 ? `${s} seconds` : `${s / 60} minute${s > 60 ? 's' : ''}`}</option>)}</select></div>
                 )}
-
               </div>
-
               
-
+              {/* Toggles */}
               <div className="mb-8 flex flex-wrap gap-4 justify-center">
-
-                <label className="flex items-center gap-2 cursor-pointer">
-
-                  <input
-
-                    type="checkbox"
-
-                    checked={adaptiveDifficulty}
-
-                    onChange={(e) => setAdaptiveDifficulty(e.target.checked)}
-
-                    className="w-5 h-5 rounded"
-
-                  />
-
-                  <span className="text-gray-600">🎯 Adaptive difficulty</span>
-
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer">
-
-                  <input
-
-                    type="checkbox"
-
-                    checked={soundEnabled}
-
-                    onChange={(e) => setSoundEnabled(e.target.checked)}
-
-                    className="w-5 h-5 rounded"
-
-                  />
-
-                  <span className="text-gray-600">🔊 Sound effects</span>
-
-                </label>
-
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={adaptiveDifficulty} onChange={(e) => setAdaptiveDifficulty(e.target.checked)} className="w-5 h-5 rounded" /><span className="text-gray-600">🎯 Adaptive difficulty</span></label>
+                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={soundEnabled} onChange={(e) => setSoundEnabled(e.target.checked)} className="w-5 h-5 rounded" /><span className="text-gray-600">🔊 Sound effects</span></label>
               </div>
-
               
-
-              {/* Name input for challenges - only show if not logged in */}
-
               {!user && (
-
-                <div className="mb-6">
-
-                  <div className="flex items-center justify-center gap-3">
-
-                    <span className="text-gray-600">Your name:</span>
-
-                    <input
-
-                      type="text"
-
-                      value={playerName}
-
-                      onChange={(e) => setPlayerName(e.target.value)}
-
-                      placeholder="Enter your name"
-
-                      className="px-4 py-2 rounded-lg border-2 border-purple-300 text-purple-700 font-semibold w-48"
-
-                      maxLength={20}
-
-                    />
-
-                  </div>
-
-                </div>
-
+                <div className="mb-6"><div className="flex items-center justify-center gap-3"><span className="text-gray-600">Your name:</span><input type="text" value={playerName} onChange={(e) => setPlayerName(e.target.value)} placeholder="Enter your name" className="px-4 py-2 rounded-lg border-2 border-purple-300 text-purple-700 font-semibold w-48" maxLength={20} /></div></div>
               )}
-
               
-
-              <button
-
-                onClick={startCountdown}
-
-                className="w-full py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-102 active:scale-98"
-
-              >
-
-                Start Practice! 🚀
-
-              </button>
-
+              <button onClick={startCountdown} className="w-full py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-102 active:scale-98">Start Practice! 🚀</button>
               
-
-              {/* Challenge Section */}
-
+              {/* Challenge Input */}
               <div className="mt-6 pt-6 border-t border-gray-200">
-
-                <button
-
-                  onClick={() => setShowChallengeInput(!showChallengeInput)}
-
-                  className="w-full py-3 bg-gradient-to-r from-yellow-400 to-orange-400 text-white text-lg font-bold rounded-xl shadow-md hover:shadow-lg transition-all"
-
-                >
-
-                  🎯 Got a Challenge Code?
-
-                </button>
-
-                
-
+                <button onClick={() => setShowChallengeInput(!showChallengeInput)} className="w-full py-3 bg-gradient-to-r from-yellow-400 to-orange-400 text-white text-lg font-bold rounded-xl shadow-md hover:shadow-lg transition-all">🎯 Got a Challenge Code?</button>
                 {showChallengeInput && (
-
                   <div className="mt-4 p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
-
                     <p className="text-gray-600 text-sm mb-3">Paste a challenge code from a friend to compete against their score!</p>
-
-                    <textarea
-
-                      value={challengeCodeInput}
-
-                      onChange={(e) => setChallengeCodeInput(e.target.value)}
-
-                      placeholder="Enter 6-character code (or paste a link)..."
-
-                      className="w-full p-3 rounded-lg border-2 border-yellow-300 text-gray-700 font-mono text-sm h-20 resize-none"
-
-                    />
-
-                    <button
-
-                      onClick={startChallenge}
-
-                      disabled={!challengeCodeInput.trim()}
-
-                      className="mt-3 w-full py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-
-                    >
-
-                      Start Challenge! ⚔️
-
-                    </button>
-
-                    {shareMessage && (
-
-                      <div className="mt-2 text-center text-red-500 font-semibold">
-
-                        {shareMessage}
-
-                      </div>
-
-                    )}
-
+                    <textarea value={challengeCodeInput} onChange={(e) => setChallengeCodeInput(e.target.value)} placeholder="Enter 6-character code..." className="w-full p-3 rounded-lg border-2 border-yellow-300 text-gray-700 font-mono text-sm h-20 resize-none" />
+                    <button onClick={startChallenge} disabled={!challengeCodeInput.trim()} className="mt-3 w-full py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-xl shadow-md disabled:opacity-50">Start Challenge! ⚔️</button>
+                    {shareMessage && <div className="mt-2 text-center text-red-500 font-semibold">{shareMessage}</div>}
                   </div>
-
                 )}
-
               </div>
-
             </div>
-
           </div>
-
         );
-
       }
 
-
-
+      // --- RENDERING: PRACTICING SCREEN ---
       if (stage === 'practicing') {
-
         const currentQuestion = questions[currentIndex];
-
-        const progress = mode === 'questions' 
-
-          ? ((currentIndex) / questionCount) * 100
-
-          : ((timeLimit - timeRemaining) / timeLimit) * 100;
-
+        const progress = mode === 'questions' ? ((currentIndex) / questionCount) * 100 : ((timeLimit - timeRemaining) / timeLimit) * 100;
         
-
         return (
-
           <div className="min-h-screen bg-gradient-to-br from-blue-400 via-purple-300 to-pink-200 p-6 flex flex-col">
-
-            {/* Challenge banner */}
-
             {challengeMode && (
-
               <div className="max-w-xl mx-auto w-full mb-4">
-
-                <div className="bg-yellow-400 text-yellow-900 rounded-xl px-4 py-2 text-center font-bold">
-
-                  ⚔️ Challenge from {challengeCreator}! Beat their {challengeScore}%!
-
-                </div>
-
+                <div className="bg-yellow-400 text-yellow-900 rounded-xl px-4 py-2 text-center font-bold">⚔️ Challenge from {challengeCreator}! Beat their {challengeScore}%!</div>
               </div>
-
             )}
-
-            
-
             <div className="max-w-xl mx-auto w-full">
-
               <div className="flex justify-between items-center mb-4 text-white">
-
-                <span className="text-lg font-semibold">
-
-                  {mode === 'questions' 
-
-                    ? `Question ${currentIndex + 1} of ${questionCount}`
-
-                    : `${results.length} answered`
-
-                  }
-
-                </span>
-
+                <span className="text-lg font-semibold">{mode === 'questions' ? `Question ${currentIndex + 1} of ${questionCount}` : `${results.length} answered`}</span>
                 <div className="flex items-center gap-4">
-
-                  <span className={`text-lg font-semibold ${streak >= 3 ? 'streak-pulse' : ''}`}>
-
-                    🔥 {streak}
-
-                  </span>
-
-                  <span className="text-lg font-semibold">
-
-                    ⭐ {points}
-
-                  </span>
-
+                  <span className={`text-lg font-semibold ${streak >= 3 ? 'streak-pulse' : ''}`}>🔥 {streak}</span>
+                  <span className="text-lg font-semibold">⭐ {points}</span>
                 </div>
-
-                <span className="text-lg font-semibold">
-
-                  {mode === 'time' 
-
-                    ? `⏱️ ${Math.floor(timeRemaining / 60)}:${(timeRemaining % 60).toString().padStart(2, '0')}`
-
-                    : `✓ ${results.filter(r => r.isCorrect).length}`
-
-                  }
-
-                </span>
-
+                <span className="text-lg font-semibold">{mode === 'time' ? `⏱️ ${Math.floor(timeRemaining / 60)}:${(timeRemaining % 60).toString().padStart(2, '0')}` : `✓ ${results.filter(r => r.isCorrect).length}`}</span>
               </div>
-
-              
-
-              <div className="w-full bg-white/30 rounded-full h-3 mb-8">
-
-                <div 
-
-                  className="bg-white rounded-full h-3 transition-all duration-300"
-
-                  style={{ width: `${progress}%` }}
-
-                />
-
-              </div>
-
+              <div className="w-full bg-white/30 rounded-full h-3 mb-8"><div className="bg-white rounded-full h-3 transition-all duration-300" style={{ width: `${progress}%` }} /></div>
             </div>
-
             
-
             <div className="flex-1 flex items-center justify-center">
-
-              <div className={`bg-white rounded-3xl shadow-2xl p-12 text-center transition-all ${
-
-                feedback === 'correct' ? 'correct-flash' : feedback === 'wrong' ? 'wrong-shake' : ''
-
-              }`}>
-
-                {streak >= 5 && (
-
-                  <div className="text-orange-500 font-bold mb-2 bounce-in">
-
-                    🔥 {streak} STREAK! +{streak * 5} bonus points
-
-                  </div>
-
-                )}
-
-                
-
-                <div className="text-6xl font-bold text-gray-800 mb-8">
-
-                  {currentQuestion.num1} {currentQuestion.symbol} {currentQuestion.num2} = ?
-
-                </div>
-
-                
-
+              <div className={`bg-white rounded-3xl shadow-2xl p-12 text-center transition-all ${feedback === 'correct' ? 'correct-flash' : feedback === 'wrong' ? 'wrong-shake' : ''}`}>
+                {streak >= 5 && <div className="text-orange-500 font-bold mb-2 bounce-in">🔥 {streak} STREAK! +{streak * 5} bonus points</div>}
+                <div className="text-6xl font-bold text-gray-800 mb-8">{currentQuestion.num1} {currentQuestion.symbol} {currentQuestion.num2} = ?</div>
                 <div>
-
-                  <input
-
-                    ref={inputRef}
-
-                    type="number"
-
-                    value={answer}
-
-                    onChange={(e) => setAnswer(e.target.value)}
-
-                    onKeyDown={handleKeyDown}
-
-                    disabled={feedback !== null}
-
-                    className="w-48 text-center text-4xl font-bold p-4 border-4 border-purple-300 rounded-xl focus:border-purple-500 focus:outline-none disabled:bg-gray-100"
-
-                    placeholder="?"
-
-                  />
-
+                  <input ref={inputRef} type="number" value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={handleKeyDown} disabled={feedback !== null} className="w-48 text-center text-4xl font-bold p-4 border-4 border-purple-300 rounded-xl focus:border-purple-500 focus:outline-none disabled:bg-gray-100" placeholder="?" />
                   <div className="flex gap-4 justify-center mt-6">
-
-                    <button
-
-                      type="button"
-
-                      onClick={skipQuestion}
-
-                      disabled={feedback !== null}
-
-                      className="px-6 py-3 bg-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-300 transition-all disabled:opacity-50"
-
-                    >
-
-                      Skip →
-
-                    </button>
-
-                    <button
-
-                      type="button"
-
-                      onClick={submitAnswer}
-
-                      disabled={answer === '' || feedback !== null}
-
-                      className="px-8 py-3 bg-gradient-to-r from-green-400 to-green-500 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-
-                    >
-
-                      Submit ✓
-
-                    </button>
-
+                    <button type="button" onClick={skipQuestion} disabled={feedback !== null} className="px-6 py-3 bg-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-300 transition-all disabled:opacity-50">Skip →</button>
+                    <button type="button" onClick={submitAnswer} disabled={answer === '' || feedback !== null} className="px-8 py-3 bg-gradient-to-r from-green-400 to-green-500 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">Submit ✓</button>
                   </div>
-
                 </div>
-
-                
-
-                {feedback && (
-
-                  <div className={`mt-4 text-2xl font-bold bounce-in ${feedback === 'correct' ? 'text-green-500' : 'text-red-500'}`}>
-
-                    {feedback === 'correct' ? '✓ Correct!' : `✗ ${currentQuestion.correctAnswer}`}
-
-                  </div>
-
-                )}
-
+                {feedback && <div className={`mt-4 text-2xl font-bold bounce-in ${feedback === 'correct' ? 'text-green-500' : 'text-red-500'}`}>{feedback === 'correct' ? '✓ Correct!' : `✗ ${currentQuestion.correctAnswer}`}</div>}
               </div>
-
             </div>
-
-            
-
-            <button
-
-              onClick={() => finishPractice()}
-
-              className="mt-8 mx-auto px-6 py-2 bg-white/30 text-white font-semibold rounded-lg hover:bg-white/40 transition-all"
-
-            >
-
-              End Practice Early
-
-            </button>
-
+            <button onClick={() => finishPractice()} className="mt-8 mx-auto px-6 py-2 bg-white/30 text-white font-semibold rounded-lg hover:bg-white/40 transition-all">End Practice Early</button>
           </div>
-
         );
-
       }
 
-
-
+      // --- RENDERING: RESULTS SCREEN ---
       if (stage === 'results') {
-
         const correct = results.filter(r => r.isCorrect).length;
-
         const total = results.length;
-
         const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
-
         const { grade, emoji, message } = getGrade(percentage);
-
         const timeTaken = endTime - startTime;
-
-        const timeTakenSeconds = Math.round(timeTaken / 1000);
-
         const missedCount = results.filter(r => !r.isCorrect).length;
-
         
-
-        // Determine challenge winner (score first, then time as tiebreaker)
-
         let challengeResult = null;
-
         if (challengeMode) {
-
-          if (percentage > challengeScore) {
-
-            challengeResult = 'win';
-
-          } else if (percentage < challengeScore) {
-
-            challengeResult = 'lose';
-
-          } else if (challengeTime !== null) {
-
-            // Tied on score, compare times
-
-            if (timeTakenSeconds < challengeTime) {
-
-              challengeResult = 'win-time';
-
-            } else if (timeTakenSeconds > challengeTime) {
-
-              challengeResult = 'lose-time';
-
-            } else {
-
-              challengeResult = 'tie';
-
-            }
-
-          } else {
-
-            challengeResult = 'tie';
-
-          }
-
+          if (percentage > challengeScore) challengeResult = 'win';
+          else if (percentage < challengeScore) challengeResult = 'lose';
+          else if (challengeTime !== null) {
+            const timeTakenSeconds = Math.round(timeTaken / 1000);
+            if (timeTakenSeconds < challengeTime) challengeResult = 'win-time';
+            else if (timeTakenSeconds > challengeTime) challengeResult = 'lose-time';
+            else challengeResult = 'tie';
+          } else challengeResult = 'tie';
         }
-
         
-
         return (
-
           <div className="min-h-screen bg-gradient-to-br from-yellow-300 via-orange-200 to-pink-300 p-6">
-
             {showConfetti && <Confetti />}
-
-            
-
             <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-2xl p-8">
-
               <div className="text-center mb-8">
-
                 <div className="text-8xl mb-4 bounce-in">{emoji}</div>
-
                 <h1 className="text-4xl font-bold text-gray-800 mb-2">Practice Complete!</h1>
-
                 <p className="text-xl text-gray-600">{message}</p>
-
               </div>
-
               
-
-              {/* Challenge Result Comparison */}
-
               {challengeMode && (
-
-                <div className={`mb-6 p-4 rounded-2xl text-center ${
-
-                  challengeResult === 'win' || challengeResult === 'win-time'
-
-                    ? 'bg-green-100 border-2 border-green-400' 
-
-                    : challengeResult === 'tie'
-
-                    ? 'bg-yellow-100 border-2 border-yellow-400'
-
-                    : 'bg-red-100 border-2 border-red-400'
-
-                }`}>
-
+                <div className={`mb-6 p-4 rounded-2xl text-center ${challengeResult?.includes('win') ? 'bg-green-100 border-2 border-green-400' : challengeResult === 'tie' ? 'bg-yellow-100 border-2 border-yellow-400' : 'bg-red-100 border-2 border-red-400'}`}>
                   <div className="text-2xl font-bold mb-2">
-
                     {challengeResult === 'win' && `🏆 You WIN! You beat ${challengeCreator}!`}
-
                     {challengeResult === 'win-time' && `🏆 You WIN! Same score but faster!`}
-
                     {challengeResult === 'tie' && `🤝 It's a TIE with ${challengeCreator}!`}
-
                     {challengeResult === 'lose-time' && `😅 ${challengeCreator} wins - same score but faster!`}
-
                     {challengeResult === 'lose' && `😅 ${challengeCreator} wins this time!`}
-
                   </div>
-
                   <div className="flex justify-center gap-6 text-lg flex-wrap">
-
-                    <div>
-
-                      <span className="text-gray-600">You: </span>
-
-                      <span className="font-bold text-purple-600">{percentage}%</span>
-
-                      <span className="text-gray-400 text-sm ml-1">({formatTime(timeTaken)})</span>
-
-                    </div>
-
-                    <div>
-
-                      <span className="text-gray-600">{challengeCreator}: </span>
-
-                      <span className="font-bold text-orange-600">{challengeScore}%</span>
-
-                      {challengeTime && <span className="text-gray-400 text-sm ml-1">({Math.floor(challengeTime/60)}:{(challengeTime%60).toString().padStart(2,'0')})</span>}
-
-                    </div>
-
+                    <div><span className="text-gray-600">You: </span><span className="font-bold text-purple-600">{percentage}%</span></div>
+                    <div><span className="text-gray-600">{challengeCreator}: </span><span className="font-bold text-orange-600">{challengeScore}%</span></div>
                   </div>
-
                 </div>
-
               )}
-
               
-
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-
-                <div className="bg-purple-100 rounded-2xl p-4 text-center">
-
-                  <div className="text-4xl font-bold text-purple-600">{grade}</div>
-
-                  <div className="text-gray-600 mt-1">Grade</div>
-
-                </div>
-
-                <div className="bg-green-100 rounded-2xl p-4 text-center">
-
-                  <div className="text-3xl font-bold text-green-600">{correct}/{total}</div>
-
-                  <div className="text-gray-600 mt-1">Correct</div>
-
-                </div>
-
-                <div className="bg-orange-100 rounded-2xl p-4 text-center">
-
-                  <div className="text-3xl font-bold text-orange-600">🔥 {maxStreak}</div>
-
-                  <div className="text-gray-600 mt-1">Best Streak</div>
-
-                </div>
-
-                <div className="bg-blue-100 rounded-2xl p-4 text-center">
-
-                  <div className="text-3xl font-bold text-blue-600">{formatTime(timeTaken)}</div>
-
-                  <div className="text-gray-600 mt-1">Time</div>
-
-                </div>
-
+                <div className="bg-purple-100 rounded-2xl p-4 text-center"><div className="text-4xl font-bold text-purple-600">{grade}</div><div className="text-gray-600 mt-1">Grade</div></div>
+                <div className="bg-green-100 rounded-2xl p-4 text-center"><div className="text-3xl font-bold text-green-600">{correct}/{total}</div><div className="text-gray-600 mt-1">Correct</div></div>
+                <div className="bg-orange-100 rounded-2xl p-4 text-center"><div className="text-3xl font-bold text-orange-600">🔥 {maxStreak}</div><div className="text-gray-600 mt-1">Best Streak</div></div>
+                <div className="bg-blue-100 rounded-2xl p-4 text-center"><div className="text-3xl font-bold text-blue-600">{formatTime(timeTaken)}</div><div className="text-gray-600 mt-1">Time</div></div>
               </div>
-
               
-
-              <div className="text-center mb-6">
-
-                <div className="flex items-center justify-center gap-4 mb-2">
-
-                  <div className="text-6xl font-bold text-gray-800">{percentage}%</div>
-
-                  <div className="text-3xl font-bold text-yellow-500">⭐ {points} pts</div>
-
-                </div>
-
-                <div className="w-full bg-gray-200 rounded-full h-4 mt-4">
-
-                  <div 
-
-                    className={`h-4 rounded-full transition-all duration-500 ${
-
-                      percentage >= 70 ? 'bg-green-500' : percentage >= 50 ? 'bg-yellow-500' : 'bg-red-500'
-
-                    }`}
-
-                    style={{ width: `${percentage}%` }}
-
-                  />
-
-                </div>
-
-              </div>
-
-              
-
               {results.some(r => !r.isCorrect) && (
-
                 <div className="mb-8">
-
                   <h3 className="text-lg font-semibold text-gray-700 mb-3">Questions to review:</h3>
-
                   <div className="space-y-2 max-h-48 overflow-y-auto">
-
                     {results.filter(r => !r.isCorrect).map((r, i) => (
-
                       <div key={i} className="bg-red-50 border border-red-200 rounded-lg p-3 flex justify-between items-center">
-
-                        <span className="text-gray-700">
-
-                          {r.num1} {r.symbol} {r.num2} = {r.skipped ? <span className="text-gray-400">skipped</span> : <span className="text-red-500 line-through">{r.userAnswer}</span>}
-
-                        </span>
-
-                        <span className="text-green-600 font-bold">
-
-                          Correct: {r.correctAnswer}
-
-                        </span>
-
+                        <span className="text-gray-700">{r.num1} {r.symbol} {r.num2} = <span className="text-red-500 line-through">{r.userAnswer ?? 'skipped'}</span></span>
+                        <span className="text-green-600 font-bold">Correct: {r.correctAnswer}</span>
                       </div>
-
                     ))}
-
                   </div>
-
                 </div>
-
               )}
-
               
-
-              {/* Challenge a Friend Section */}
-
               <div className="mb-6 p-4 bg-gradient-to-r from-yellow-100 to-orange-100 rounded-2xl">
-
                 <h3 className="text-lg font-semibold text-gray-700 mb-3 text-center">⚔️ Challenge a Friend!</h3>
-
-                <p className="text-gray-600 text-sm text-center mb-3">Send these exact questions to someone and see if they can beat your score!</p>
-
-                <button
-
-                  onClick={createChallenge}
-
-                  className="w-full py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all"
-
-                >
-
-                  🎯 Create Challenge Code
-
-                </button>
-
+                <button onClick={createChallenge} className="w-full py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all">🎯 Create Challenge Code</button>
               </div>
-
               
-
-              {/* Share Section */}
-
               <div className="mb-8 p-4 bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl">
-
                 <h3 className="text-lg font-semibold text-gray-700 mb-3 text-center">Share Your Results! 🎉</h3>
-
                 <div className="flex flex-wrap gap-3 justify-center">
-
-                  <button
-
-                    onClick={shareResults}
-
-                    className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2"
-
-                  >
-
-                    📤 Share
-
-                  </button>
-
-                  <button
-
-                    onClick={downloadShareCard}
-
-                    className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2"
-
-                  >
-
-                    🖼️ Save Image
-
-                  </button>
-
+                  <button onClick={shareResults} className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold rounded-xl shadow-md flex items-center gap-2">📤 Share</button>
+                  <button onClick={downloadShareCard} className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold rounded-xl shadow-md flex items-center gap-2">🖼️ Save Image</button>
                 </div>
-
-                {shareMessage && (
-
-                  <div className="mt-3 text-center text-green-600 font-semibold bounce-in">
-
-                    {shareMessage}
-
-                  </div>
-
-                )}
-
-                
-
-                {/* Hidden ref for share card dimensions */}
-
+                {shareMessage && <div className="mt-3 text-center text-green-600 font-semibold bounce-in">{shareMessage}</div>}
                 <div ref={shareCardRef} style={{position: 'absolute', left: '-9999px'}} />
-
               </div>
-
               
-
               <div className="flex flex-col sm:flex-row gap-4">
-
-                <button
-
-                  onClick={restart}
-
-                  className="flex-1 py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all"
-
-                >
-
-                  New Practice 🔄
-
-                </button>
-
-                {missedCount > 0 && (
-
-                  <button
-
-                    onClick={retryMissed}
-
-                    className="flex-1 py-4 bg-gradient-to-r from-orange-400 to-red-400 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all"
-
-                  >
-
-                    Retry Missed ({missedCount}) 🎯
-
-                  </button>
-
-                )}
-
+                <button onClick={restart} className="flex-1 py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all">New Practice 🔄</button>
+                {missedCount > 0 && <button onClick={retryMissed} className="flex-1 py-4 bg-gradient-to-r from-orange-400 to-red-400 text-white text-xl font-bold rounded-xl shadow-lg hover:shadow-xl transition-all">Retry Missed ({missedCount}) 🎯</button>}
               </div>
-
             </div>
-
           </div>
-
         );
-
       }
-
-      
-
       return null;
-
     }
 
-
-
     ReactDOM.render(
-
-      <>
-
-        <MathTrainer />
-
-        <VersionBadge />
-
-      </>,
-
+      <><MathTrainer /><VersionBadge /></>,
       document.getElementById('root')
-
     );
-
   </script>
-
 </body>
-
 </html>
