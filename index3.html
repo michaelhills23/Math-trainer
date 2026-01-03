@@ -65,17 +65,33 @@
   <script type="text/babel">
     const { useState, useEffect, useRef, useCallback } = React;
 
-    // Sound generation using Web Audio API
+    /**
+     * Custom hook for playing sound effects using Web Audio API
+     * @returns {{playCorrect: Function, playWrong: Function, playStreak: Function, playCelebration: Function, playCountdown: Function, playGo: Function}} Sound effect functions
+     */
     const useSound = () => {
+      /** @type {React.MutableRefObject<AudioContext|null>} */
       const audioContextRef = useRef(null);
-      
+
+      /**
+       * Gets or creates the AudioContext instance
+       * @returns {AudioContext} The audio context
+       */
       const getContext = () => {
         if (!audioContextRef.current) {
           audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
         }
         return audioContextRef.current;
       };
-      
+
+      /**
+       * Plays a tone with specified parameters
+       * @param {number} frequency - Frequency in Hz
+       * @param {number} duration - Duration in seconds
+       * @param {OscillatorType} [type='sine'] - Oscillator type
+       * @param {number} [volume=0.3] - Volume level (0-1)
+       * @returns {void}
+       */
       const playTone = (frequency, duration, type = 'sine', volume = 0.3) => {
         try {
           const ctx = getContext();
@@ -132,8 +148,14 @@
       return { playCorrect, playWrong, playStreak, playCelebration, playCountdown, playGo };
     };
 
-    // Confetti component
+    /**
+     * Confetti component for celebration effects
+     * @param {{count?: number}} props - Component props
+     * @param {number} [props.count=50] - Number of confetti pieces to display
+     * @returns {JSX.Element} Confetti animation element
+     */
     const Confetti = ({ count = 50 }) => {
+      /** @type {string[]} */
       const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
       
       return (
@@ -192,8 +214,24 @@
       return bests;
     };
 
+    /**
+     * @typedef {Object} Question
+     * @property {number} num1 - First number
+     * @property {number} num2 - Second number
+     * @property {string} symbol - Operation symbol (+, −, ×, ÷)
+     * @property {number} correctAnswer - The correct answer
+     * @property {string} operation - Operation type
+     * @property {number|string} digits - Digit configuration
+     */
+
+    /**
+     * Main Math Trainer application component
+     * @returns {JSX.Element|null} The application UI
+     */
     function MathTrainer() {
+      /** @type {['setup'|'countdown'|'practicing'|'results', Function]} */
       const [stage, setStage] = useState('setup');
+      /** @type {[{addition: boolean, subtraction: boolean, multiplication: boolean, division: boolean}, Function]} */
       const [operations, setOperations] = useState({
         addition: false,
         subtraction: false,
@@ -267,6 +305,11 @@
         }
       };
 
+      /**
+       * Generates a math question based on current settings
+       * @param {Object} [opDigits] - Optional digit configuration to override current settings
+       * @returns {Question|null} Generated question or null if no operations selected
+       */
       const generateQuestion = useCallback((opDigits) => {
         const activeOps = Object.entries(operations).filter(([_, active]) => active);
         if (activeOps.length === 0) return null;

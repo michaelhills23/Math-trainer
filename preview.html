@@ -9,6 +9,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   
+  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -88,17 +89,33 @@
   <script type="text/babel">
     const { useState, useEffect, useRef, useCallback } = React;
 
-    // Sound generation using Web Audio API
+    /**
+     * Custom hook for playing sound effects using Web Audio API
+     * @returns {{playCorrect: Function, playWrong: Function, playStreak: Function, playCelebration: Function, playCountdown: Function, playGo: Function}} Sound effect functions
+     */
     const useSound = () => {
+      /** @type {React.MutableRefObject<AudioContext|null>} */
       const audioContextRef = useRef(null);
-      
+
+      /**
+       * Gets or creates the AudioContext instance
+       * @returns {AudioContext} The audio context
+       */
       const getContext = () => {
         if (!audioContextRef.current) {
           audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
         }
         return audioContextRef.current;
       };
-      
+
+      /**
+       * Plays a tone with specified parameters
+       * @param {number} frequency - Frequency in Hz
+       * @param {number} duration - Duration in seconds
+       * @param {OscillatorType} [type='sine'] - Oscillator type
+       * @param {number} [volume=0.3] - Volume level (0-1)
+       * @returns {void}
+       */
       const playTone = (frequency, duration, type = 'sine', volume = 0.3) => {
         try {
           const ctx = getContext();
@@ -155,8 +172,14 @@
       return { playCorrect, playWrong, playStreak, playCelebration, playCountdown, playGo };
     };
 
-    // Confetti component
+    /**
+     * Confetti component for celebration effects
+     * @param {{count?: number}} props - Component props
+     * @param {number} [props.count=50] - Number of confetti pieces to display
+     * @returns {JSX.Element} Confetti animation element
+     */
     const Confetti = ({ count = 50 }) => {
+      /** @type {string[]} */
       const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
       
       return (
@@ -177,7 +200,25 @@
       );
     };
 
-    // Progress history helpers
+    /**
+     * @typedef {Object} SessionResult
+     * @property {string[]} operations - Array of operation types
+     * @property {Object} digits - Digit configuration for each operation
+     * @property {string} mode - Practice mode ('questions' or 'time')
+     * @property {number} correct - Number of correct answers
+     * @property {number} total - Total number of questions
+     * @property {number} percentage - Percentage score
+     * @property {number} maxStreak - Maximum streak achieved
+     * @property {number} points - Total points earned
+     * @property {number} timeTaken - Time taken in milliseconds
+     * @property {string} [date] - ISO date string
+     */
+
+    /**
+     * Saves a practice session result to local storage
+     * @param {SessionResult} result - The session result to save
+     * @returns {void}
+     */
     const saveResult = (result) => {
       try {
         const history = JSON.parse(localStorage.getItem('mathTrainerHistory') || '[]');
@@ -193,6 +234,10 @@
       }
     };
 
+    /**
+     * Gets practice session history from local storage
+     * @returns {SessionResult[]} Array of session results
+     */
     const getHistory = () => {
       try {
         return JSON.parse(localStorage.getItem('mathTrainerHistory') || '[]');
@@ -201,8 +246,13 @@
       }
     };
 
+    /**
+     * Gets personal best scores grouped by operation types
+     * @returns {Object.<string, SessionResult>} Map of operation keys to best sessions
+     */
     const getPersonalBests = () => {
       const history = getHistory();
+      /** @type {Object.<string, SessionResult>} */
       const bests = {};
       
       history.forEach(session => {
@@ -215,72 +265,7 @@
       return bests;
     };
 
-    // Firestore-backed sessions for signed-in users (used by Progress screen)
-    const useUserSessions = (user) => {
-      const [sessions, setSessions] = useState([]);
-      const [sessionsLoading, setSessionsLoading] = useState(false);
-      const [sessionsError, setSessionsError] = useState(null);
-
-      useEffect(() => {
-        if (!user) {
-          setSessions([]);
-          setSessionsLoading(false);
-          setSessionsError(null);
-          return;
-        }
-
-        setSessionsLoading(true);
-        setSessionsError(null);
-
-        // Listen to this user's saved sessions (one Firestore doc per session)
-        const unsub = db.collection('scores')
-          .where('userId', '==', user.uid)
-          .orderBy('timestamp', 'desc')
-          .onSnapshot(
-            (snap) => {
-              const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-              setSessions(rows);
-              setSessionsLoading(false);
-            },
-            (err) => {
-              console.error('Error loading sessions:', err);
-              setSessionsError(err);
-              setSessionsLoading(false);
-            }
-          );
-
-        return () => unsub();
-      }, [user]);
-
-      return { sessions, sessionsLoading, sessionsError };
-    };
-
-    const buildChallengeUrl = (code) => {
-      if (!code) return null;
-      const base = `${window.location.origin}${window.location.pathname}`;
-      const url = new URL(base);
-      url.searchParams.set('c', code);
-      return url.toString();
-    };
-
-    const copyText = async (text) => {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch (e) {
-        // Fallback
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        try { document.execCommand('copy'); } catch (_) {}
-        document.body.removeChild(ta);
-        return true;
-      }
-    };
-
-
-    const VERSION = 'v3.85';
+    const VERSION = 'v3.1';
     
     // Version display component
     const VersionBadge = () => (
@@ -289,12 +274,20 @@
       </div>
     );
     
-    // Firebase hooks
+    /**
+     * Custom hook for Firebase authentication
+     * @returns {{user: firebase.User|null, loading: boolean, signInWithGoogle: Function, signOut: Function}} Auth state and functions
+     */
     const useAuth = () => {
+      /** @type {[firebase.User|null, Function]} */
       const [user, setUser] = useState(null);
+      /** @type {[boolean, Function]} */
       const [loading, setLoading] = useState(true);
-      
+
       useEffect(() => {
+        /**
+         * @param {firebase.User|null} user - The authenticated user or null
+         */
         const unsubscribe = auth.onAuthStateChanged((user) => {
           setUser(user);
           setLoading(false);
@@ -322,7 +315,23 @@
       return { user, loading, signInWithGoogle, signOut };
     };
     
-    // Save score to leaderboard
+    /**
+     * @typedef {Object} ScoreData
+     * @property {number} percentage - Percentage score
+     * @property {number} correct - Number of correct answers
+     * @property {number} total - Total questions
+     * @property {number} maxStreak - Maximum streak achieved
+     * @property {number} points - Total points earned
+     * @property {number} timeTaken - Time taken in seconds
+     * @property {string[]} operations - Array of operations practiced
+     */
+
+    /**
+     * Saves score to Firebase leaderboard
+     * @param {firebase.User} user - The authenticated user
+     * @param {ScoreData} scoreData - The score data to save
+     * @returns {Promise<void>}
+     */
     const saveToLeaderboard = async (user, scoreData) => {
       if (!user) return;
       
@@ -338,12 +347,6 @@
           points: scoreData.points,
           time: scoreData.timeTaken,
           operations: scoreData.operations,
-          digits: scoreData.digits,
-          mode: scoreData.mode,
-          questionCount: scoreData.questionCount,
-          seed: scoreData.seed,
-          adaptiveDifficulty: scoreData.adaptiveDifficulty,
-          challengeCode: scoreData.challengeCode,
           timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
       } catch (error) {
@@ -351,9 +354,31 @@
       }
     };
     
-    // Get leaderboard (metric: 'score' | 'points' | 'streak')
+    /**
+     * @typedef {Object} LeaderboardEntry
+     * @property {string} id - Document ID
+     * @property {string} userId - User ID
+     * @property {string} userName - Display name
+     * @property {string} userPhoto - Photo URL
+     * @property {number} score - Percentage score
+     * @property {number} correct - Correct answers
+     * @property {number} total - Total questions
+     * @property {number} streak - Maximum streak
+     * @property {number} points - Total points
+     * @property {number} time - Time taken in seconds
+     * @property {string[]} operations - Operations practiced
+     * @property {firebase.firestore.Timestamp} timestamp - Server timestamp
+     */
+
+    /**
+     * Custom hook to fetch and subscribe to leaderboard data
+     * @param {'score'|'points'|'streak'} [metric='score'] - The metric to sort by
+     * @returns {{leaderboard: LeaderboardEntry[], loading: boolean, refresh: Function}} Leaderboard data and functions
+     */
     const useLeaderboard = (metric = 'score') => {
+      /** @type {[LeaderboardEntry[], Function]} */
       const [leaderboard, setLeaderboard] = useState([]);
+      /** @type {[boolean, Function]} */
       const [loading, setLoading] = useState(true);
 
       const fetchLeaderboard = async () => {
@@ -400,68 +425,105 @@
       return { leaderboard, loading, refresh: fetchLeaderboard };
     };
 
+    /**
+     * Main Math Trainer application component
+     * @returns {JSX.Element|null} The application UI
+     */
     function MathTrainer() {
       const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
+      /** @type {['score'|'points'|'streak', Function]} */
       const [leaderboardMetric, setLeaderboardMetric] = useState('score');
       const { leaderboard, loading: leaderboardLoading, refresh: refreshLeaderboard } = useLeaderboard(leaderboardMetric);
+      /** @type {[boolean, Function]} */
       const [showLeaderboard, setShowLeaderboard] = useState(false);
-      
+
+      /** @type {['setup'|'countdown'|'practicing'|'results', Function]} */
       const [stage, setStage] = useState('setup');
+      /** @type {[{addition: boolean, subtraction: boolean, multiplication: boolean, division: boolean}, Function]} */
       const [operations, setOperations] = useState({
         addition: false,
         subtraction: false,
         multiplication: false,
         division: false
       });
+      /** @type {[{addition: number, subtraction: number, multiplication: string, division: number}, Function]} */
       const [digits, setDigits] = useState({
         addition: 1,
         subtraction: 1,
         multiplication: '1x1', // Special multiplication modes
         division: 1
       });
+      /** @type {['questions'|'time', Function]} */
       const [mode, setMode] = useState('questions');
+      /** @type {[number, Function]} */
       const [questionCount, setQuestionCount] = useState(10);
+      /** @type {[number, Function]} */
       const [timeLimit, setTimeLimit] = useState(60);
+      /** @type {[boolean, Function]} */
       const [adaptiveDifficulty, setAdaptiveDifficulty] = useState(false);
+      /** @type {[boolean, Function]} */
       const [soundEnabled, setSoundEnabled] = useState(true);
-      
+
+      /** @type {[Question[], Function]} */
       const [questions, setQuestions] = useState([]);
+      /** @type {[number, Function]} */
       const [currentIndex, setCurrentIndex] = useState(0);
+      /** @type {[string, Function]} */
       const [answer, setAnswer] = useState('');
+      /** @type {[Array, Function]} */
       const [results, setResults] = useState([]);
+      /** @type {[number|null, Function]} */
       const [startTime, setStartTime] = useState(null);
+      /** @type {[number|null, Function]} */
       const [endTime, setEndTime] = useState(null);
+      /** @type {[number, Function]} */
       const [timeRemaining, setTimeRemaining] = useState(0);
-      
+
+      /** @type {[number, Function]} */
       const [streak, setStreak] = useState(0);
+      /** @type {[number, Function]} */
       const [maxStreak, setMaxStreak] = useState(0);
+      /** @type {[number, Function]} */
       const [points, setPoints] = useState(0);
-      const [feedback, setFeedback] = useState(null); // 'correct' or 'wrong'
+      /** @type {['correct'|'wrong'|null, Function]} */
+      const [feedback, setFeedback] = useState(null);
+      /** @type {[boolean, Function]} */
       const [showConfetti, setShowConfetti] = useState(false);
+      /** @type {[number|null, Function]} */
       const [countdown, setCountdown] = useState(null);
+      /** @type {[Object, Function]} */
       const [currentDigits, setCurrentDigits] = useState({...digits});
+      /** @type {[boolean, Function]} */
       const [showHistory, setShowHistory] = useState(false);
-      const { sessions: userSessions, sessionsLoading: userSessionsLoading, sessionsError: userSessionsError } = useUserSessions(user);
-      const [expandedSessionId, setExpandedSessionId] = useState(null);
-      const [progressMessage, setProgressMessage] = useState('');
-
+      /** @type {[boolean, Function]} */
       const [showShareCard, setShowShareCard] = useState(false);
+      /** @type {[string, Function]} */
       const [shareMessage, setShareMessage] = useState('');
-      const [generatedChallengeCode, setGeneratedChallengeCode] = useState(null);
-
+      /** @type {[boolean, Function]} */
       const [challengeMode, setChallengeMode] = useState(false);
+      /** @type {[string, Function]} */
       const [challengeCreator, setChallengeCreator] = useState('');
+      /** @type {[number|null, Function]} */
       const [challengeScore, setChallengeScore] = useState(null);
+      /** @type {[number|null, Function]} */
       const [challengeTime, setChallengeTime] = useState(null);
+      /** @type {[boolean, Function]} */
       const [showChallengeInput, setShowChallengeInput] = useState(false);
+      /** @type {[string, Function]} */
       const [challengeCodeInput, setChallengeCodeInput] = useState('');
+      /** @type {[string, Function]} */
       const [playerName, setPlayerName] = useState('');
+      /** @type {[string|null, Function]} */
       const [urlChallengeCode, setUrlChallengeCode] = useState(null);
       
+      /** @type {React.MutableRefObject<HTMLDivElement|null>} */
       const shareCardRef = useRef(null);
-      
+
+      /** @type {React.MutableRefObject<HTMLInputElement|null>} */
       const inputRef = useRef(null);
+      /** @type {React.MutableRefObject<number|null>} */
       const timerRef = useRef(null);
+      /** @type {React.MutableRefObject<number|null>} */
       const feedbackTimeoutRef = useRef(null);
       
       const sound = useSound();
@@ -475,13 +537,22 @@
         }
       }, []);
 
+      /**
+       * Generates a random number with specified digits
+       * @param {number} numDigits - Number of digits (1-3)
+       * @returns {number} Random number with specified digits
+       */
       const generateNumber = (numDigits) => {
         const min = numDigits === 1 ? 1 : Math.pow(10, numDigits - 1);
         const max = Math.pow(10, numDigits) - 1;
         return Math.floor(Math.random() * (max - min + 1)) + min;
       };
-      
-      // Generate multiplication numbers based on mode (non-seeded version)
+
+      /**
+       * Generates multiplication numbers based on mode
+       * @param {'1x1'|'2x1'|'3x1'|'2x2'} multMode - Multiplication mode
+       * @returns {[number, number]} Tuple of two numbers to multiply
+       */
       const generateMultNums = (multMode) => {
         switch (multMode) {
           case '1x1': // 1-12 × 1-12
@@ -497,6 +568,21 @@
         }
       };
 
+      /**
+       * @typedef {Object} Question
+       * @property {number} num1 - First number
+       * @property {number} num2 - Second number
+       * @property {string} symbol - Operation symbol (+, −, ×, ÷)
+       * @property {number} correctAnswer - The correct answer
+       * @property {string} operation - Operation type
+       * @property {number|string} digits - Digit configuration
+       */
+
+      /**
+       * Generates a math question based on current settings
+       * @param {Object} [opDigits] - Optional digit configuration to override current settings
+       * @returns {Question|null} Generated question or null if no operations selected
+       */
       const generateQuestion = useCallback((opDigits) => {
         const activeOps = Object.entries(operations).filter(([_, active]) => active);
         if (activeOps.length === 0) return null;
@@ -612,16 +698,17 @@
         }
       }, [stage, mode, timeRemaining, startTime]);
 
-      // FIX 1: Max Streak Update Fix
-      const finishPractice = (finalResults, maxStreakOverride = null) => {
+      /**
+       * Finishes the practice session and shows results
+       * @param {Array} [finalResults] - Optional final results array
+       * @returns {void}
+       */
+      const finishPractice = (finalResults) => {
         const resultsToSave = finalResults || results;
         const correct = resultsToSave.filter(r => r.isCorrect).length;
         const total = resultsToSave.length;
         const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
         
-        // Use override if provided (fixes the lag in state update)
-        const finalMaxStreak = maxStreakOverride !== null ? maxStreakOverride : maxStreak;
-
         setEndTime(Date.now());
         setStage('results');
         if (timerRef.current) clearTimeout(timerRef.current);
@@ -643,7 +730,7 @@
           correct,
           total,
           percentage,
-          maxStreak: finalMaxStreak, 
+          maxStreak,
           points,
           timeTaken
         });
@@ -652,16 +739,10 @@
         if (user) {
           saveToLeaderboard(user, {
             operations: activeOps,
-            digits: currentDigits,
-            mode,
-            questionCount: total,
-            seed: challengeSeed,
-            adaptiveDifficulty,
-            challengeCode: (generatedChallengeCode || null),
             correct,
             total,
             percentage,
-            maxStreak: finalMaxStreak,
+            maxStreak,
             points,
             timeTaken: Math.round(timeTaken / 1000)
           });
@@ -757,12 +838,9 @@
           
           const nextIndex = currentIndex + 1;
           
-          // Calculate max streak here and pass it
-          const currentMaxStreak = Math.max(maxStreak, newStreak);
-
           if (mode === 'questions' && nextIndex >= questionCount) {
             setResults(newResults);
-            finishPractice(newResults, currentMaxStreak); // Pass override
+            finishPractice(newResults);
           } else if (nextIndex < questions.length) {
             // Generate new question with current difficulty
             const updatedQuestions = [...questions];
@@ -775,11 +853,16 @@
             setCurrentIndex(nextIndex);
           } else {
             setResults(newResults);
-            finishPractice(newResults, currentMaxStreak); // Pass override
+            finishPractice(newResults);
           }
         }, 500);
       };
       
+      /**
+       * Handles keyboard events in the answer input
+       * @param {React.KeyboardEvent<HTMLInputElement>} e - Keyboard event
+       * @returns {void}
+       */
       const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -823,6 +906,11 @@
         }, 300);
       };
 
+      /**
+       * Formats milliseconds into MM:SS format
+       * @param {number} ms - Time in milliseconds
+       * @returns {string} Formatted time string
+       */
       const formatTime = (ms) => {
         const totalSeconds = Math.floor(ms / 1000);
         const minutes = Math.floor(totalSeconds / 60);
@@ -830,6 +918,18 @@
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
       };
 
+      /**
+       * @typedef {Object} Grade
+       * @property {string} grade - Letter grade (A-F)
+       * @property {string} emoji - Emoji representation
+       * @property {string} message - Encouragement message
+       */
+
+      /**
+       * Calculates grade based on percentage score
+       * @param {number} percentage - Percentage score (0-100)
+       * @returns {Grade} Grade object with grade, emoji, and message
+       */
       const getGrade = (percentage) => {
         if (percentage >= 90) return { grade: 'A', emoji: '🌟', message: 'Excellent!' };
         if (percentage >= 80) return { grade: 'B', emoji: '😊', message: 'Great job!' };
@@ -892,6 +992,11 @@ Beat my score! ${challengeUrl}`;
         }
       };
       
+      /**
+       * Copies text to clipboard
+       * @param {string} text - Text to copy
+       * @returns {Promise<void>}
+       */
       const copyToClipboard = async (text) => {
         try {
           await navigator.clipboard.writeText(text);
@@ -989,7 +1094,11 @@ Beat my score! ${challengeUrl}`;
       // Seed-based encoding: just store the seed that generates the same questions
       const [challengeSeed, setChallengeSeed] = useState(null);
       
-      // Seeded random number generator (mulberry32)
+      /**
+       * Seeded random number generator using mulberry32 algorithm
+       * @param {number} seed - Random seed
+       * @returns {() => number} Random number generator function (returns 0-1)
+       */
       const seededRandom = (seed) => {
         return () => {
           seed = (seed + 0x6D2B79F5) | 0;
@@ -998,7 +1107,15 @@ Beat my score! ${challengeUrl}`;
           return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
         };
       };
-      
+
+      /**
+       * Generates questions from a seed for reproducible challenges
+       * @param {number} seed - Random seed
+       * @param {number} count - Number of questions to generate
+       * @param {Object.<string, boolean>} ops - Operations configuration
+       * @param {Object.<string, number|string>} digs - Digits configuration
+       * @returns {Question[]} Array of generated questions
+       */
       const generateQuestionsFromSeed = (seed, count, ops, digs) => {
         const random = seededRandom(seed);
         const activeOps = Object.entries(ops).filter(([_, active]) => active).map(([op]) => op);
@@ -1065,36 +1182,13 @@ Beat my score! ${challengeUrl}`;
         return questions;
       };
       
-      // Encode: score.seed.count.ops.digits.time
-      // ops: bitmask (add=1, sub=2, mul=4, div=8)
-      // digits: packed as add*1 + sub*4 + mul*16 + div*64 (each 0-3)
-      // time: in seconds (base36)
-
-      const packOpBits = (ops) => ( (ops.addition ? 1 : 0) | (ops.subtraction ? 2 : 0) | (ops.multiplication ? 4 : 0) | (ops.division ? 8 : 0) );
-
-      const packDigits = (digs) => {
-        // Map multiplication mode to number: 1x1=0, 2x1=1, 3x1=2, 2x2=3
-        const multModeMap = { '1x1': 0, '2x1': 1, '3x1': 2, '2x2': 3 };
-        const multModeNum = multModeMap[digs.multiplication] ?? 0;
-        return (Number(digs.addition) - 1) + 
-               ((Number(digs.subtraction) - 1) * 4) + 
-               (multModeNum * 16) + 
-               ((Number(digs.division) - 1) * 64);
-      };
-
-      // Build a challenge code from explicit session data (used for saved sessions)
-      // Format: score.seed.count.ops.digits.time (all base36)
-      const encodeChallengeFromData = (percentage, seed, count, ops, digs, timeSeconds) => {
-        try {
-          const opBits = packOpBits(ops);
-          const digitsPacked = packDigits(digs);
-          return `${Number(percentage).toString(36)}.${Number(seed).toString(36)}.${Number(count).toString(36)}.${Number(opBits).toString(36)}.${Number(digitsPacked).toString(36)}.${Number(timeSeconds ?? 0).toString(36)}`;
-        } catch (e) {
-          return null;
-        }
-      };
-
-
+      /**
+       * Encodes challenge data into a shareable string
+       * Format: score.seed.count.ops.digits.time (all base36)
+       * ops: bitmask (add=1, sub=2, mul=4, div=8)
+       * digits: packed as add*1 + sub*4 + mul*16 + div*64
+       * @returns {string} Encoded challenge string
+       */
       const encodeChallenge = () => {
         const correct = results.filter(r => r.isCorrect).length;
         const total = results.length;
@@ -1119,6 +1213,23 @@ Beat my score! ${challengeUrl}`;
         return `${percentage.toString(36)}.${challengeSeed.toString(36)}.${total.toString(36)}.${opBits.toString(36)}.${digitsPacked.toString(36)}.${timeTaken.toString(36)}`;
       };
       
+      /**
+       * @typedef {Object} DecodedChallenge
+       * @property {Question[]} questions - Array of challenge questions
+       * @property {number} seed - Random seed used
+       * @property {Object.<string, boolean>} ops - Operations configuration
+       * @property {Object.<string, number|string>} digs - Digits configuration
+       * @property {string} mode - Practice mode
+       * @property {string} creator - Challenge creator name
+       * @property {number} creatorScore - Creator's score percentage
+       * @property {number|null} creatorTime - Creator's time in seconds
+       */
+
+      /**
+       * Decodes a challenge string into challenge data
+       * @param {string} code - Encoded challenge string
+       * @returns {DecodedChallenge|null} Decoded challenge data or null if invalid
+       */
       const decodeChallenge = (code) => {
         try {
           const parts = code.split('.');
@@ -1168,250 +1279,91 @@ Beat my score! ${challengeUrl}`;
         }
       };
       
-            // Short-code challenge system (6-char base62 codes stored in Firestore)
-      const generateChallengeCode = (length = 6) => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        let code = '';
-        for (let i = 0; i < length; i++) {
-          code += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return code;
-      };
+      const createChallenge = async () => {
+        const code = encodeChallenge();
+        const name = user?.displayName || playerName || 'Someone';
+        const correct = results.filter(r => r.isCorrect).length;
+        const total = results.length;
+        const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+        const challengeUrl = `https://michaelhills23.github.io/Math-trainer/?c=${code}`;
+        
+        const challengeText = `🎯 ${name} challenges you!
 
-      const createChallengeDoc = async (payload) => {
-        const challengesRef = db.collection('challenges');
-
-        // Try a few times to avoid collisions (extremely unlikely)
-        for (let attempt = 0; attempt < 5; attempt++) {
-          const code = generateChallengeCode(6);
-          const docRef = challengesRef.doc(code);
-          const existing = await docRef.get();
-          if (existing.exists) continue;
-
-          await docRef.set({
-            ...payload,
-            plays: 0,
-            isPublic: true,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            expiresAt: firebase.firestore.Timestamp.fromDate(
-              new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-            )
-          });
-
-          return code;
-        }
-
-        throw new Error('Could not generate a unique challenge code. Please try again.');
-      };
-
-      const createChallenge = async (sessionOverride = null) => {
-        try {
-          const name = user?.displayName || playerName || 'Someone';
-
-          // Pull data either from a past session (Progress) or the current run (Results)
-          const seed = Number(sessionOverride?.seed ?? challengeSeed);
-          const ops = sessionOverride?._opsObj ?? sessionOverride?.operations ?? operations;
-          const digs = sessionOverride?._digits ?? sessionOverride?.digits ?? digits;
-          const count = Number(sessionOverride?.questionCount ?? sessionOverride?._total ?? questionCount ?? 20);
-
-          // FIX 2: Correctly calculate current score and time if no sessionOverride
-          const currentScore = results.length > 0 
-            ? Math.round((results.filter(r => r.isCorrect).length / results.length) * 100) 
-            : 0;
-
-          const currentTimeSeconds = (startTime && endTime) 
-            ? Math.round((endTime - startTime) / 1000) 
-            : 0;
-
-          const creatorScore =
-            Number(sessionOverride?._pct ?? sessionOverride?.score ?? currentScore);
-          
-          const creatorTime =
-            Number(sessionOverride?._timeSeconds ?? sessionOverride?.time ?? currentTimeSeconds);
-
-          if (!seed || !ops || !digs || !count) {
-            setShareMessage('This session is missing challenge data (seed/settings).');
-            setTimeout(() => setShareMessage(''), 3000);
-            return;
-          }
-
-          const code = await createChallengeDoc({
-            ownerUserId: user?.uid || null,
-            sessionId: sessionOverride?.id || null,
-            creatorName: name,
-            creatorScore,
-            creatorTime,
-            seed,
-            operations: ops,
-            digits: digs,
-            questionCount: count,
-            generatorVersion: 1
-          });
-
-          const challengeUrl = buildChallengeUrl(code);
-          const challengeText =
-`🎯 ${name} challenges you!
-
-Code: ${code}
-
-Beat ${creatorScore}% to win!
+Score ${percentage}% to win!
 
 ${challengeUrl}`;
-
-          if (navigator.share) {
-            try {
-              await navigator.share({
-                title: 'Math Challenge',
-                text: challengeText,
-                url: challengeUrl
-              });
-            } catch (e) {
-              if (e.name !== 'AbortError') {
-                await copyToClipboard(challengeText);
-                setShareMessage('Challenge copied to clipboard!');
-                setTimeout(() => setShareMessage(''), 2000);
-              }
+        
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: 'Math Challenge',
+              text: challengeText,
+              url: challengeUrl
+            });
+          } catch (e) {
+            if (e.name !== 'AbortError') {
+              copyToClipboard(challengeText);
             }
-          } else {
-            await copyToClipboard(challengeText);
-            setShareMessage('Challenge copied to clipboard!');
-            setTimeout(() => setShareMessage(''), 2000);
           }
-
-          // For the current run, also stash the code so it shows in saved session data
-          setGeneratedChallengeCode(code);
-
-          return { code, url: challengeUrl };
-        } catch (e) {
-          console.error('Failed to create challenge:', e);
-          setShareMessage('Could not create challenge. Please try again.');
+        } else {
+          copyToClipboard(challengeText);
+        }
+      };
+      
+      /**
+       * Starts a challenge from an encoded challenge code
+       * @param {string} code - Encoded challenge string
+       * @returns {boolean} True if challenge started successfully
+       */
+      const startChallengeFromCode = (code) => {
+        const decoded = decodeChallenge(code.trim());
+        
+        if (!decoded) {
+          return false;
+        }
+        
+        // Set up the challenge
+        setChallengeMode(true);
+        setChallengeCreator(decoded.creator);
+        setChallengeScore(decoded.creatorScore);
+        setChallengeTime(decoded.creatorTime);
+        setChallengeSeed(decoded.seed);
+        setQuestions(decoded.questions);
+        setQuestionCount(decoded.questions.length);
+        setMode('questions');
+        
+        // Set operations and digits from decoded challenge
+        setOperations(decoded.ops);
+        setDigits(decoded.digs);
+        
+        setCurrentIndex(0);
+        setResults([]);
+        setAnswer('');
+        setStartTime(Date.now());
+        setEndTime(null);
+        setStreak(0);
+        setMaxStreak(0);
+        setPoints(0);
+        setFeedback(null);
+        setShowChallengeInput(false);
+        setChallengeCodeInput('');
+        setAdaptiveDifficulty(false);
+        setUrlChallengeCode(null);
+        
+        // Clear URL parameter
+        window.history.replaceState({}, '', window.location.pathname);
+        
+        setStage('practicing');
+        return true;
+      };
+      
+      const startChallenge = () => {
+        if (!startChallengeFromCode(challengeCodeInput)) {
+          setShareMessage('Invalid challenge code! 😕');
           setTimeout(() => setShareMessage(''), 3000);
         }
       };
-
-      // Start challenge from a code (used by URL param and manual input)
-const isShortChallengeCode = (c) => /^[A-Za-z0-9]{6}$/.test((c || '').trim());
-
-const fetchChallengeDoc = async (code) => {
-  const c = (code || '').trim();
-  if (!c) return null;
-  try {
-    const doc = await db.collection('challenges').doc(c).get();
-    if (!doc.exists) return null;
-    const data = doc.data() || {};
-    // Basic expiry guard
-    if (data.expiresAt && data.expiresAt.toDate && data.expiresAt.toDate() < new Date()) {
-      return null;
-    }
-    return { id: doc.id, ...data };
-  } catch (e) {
-    console.error('Failed to load challenge doc:', e);
-    return null;
-  }
-};
-
-const startChallengeFromCode = async (code) => {
-  let raw = (code || '').trim();
-  if (!raw) return false;
-
-  // Allow pasting a full URL containing ?c=XXXXXX
-  if (raw.includes('c=')) {
-    try {
-      const u = new URL(raw);
-      const c = u.searchParams.get('c');
-      if (c) raw = c.trim();
-    } catch (e) {
-      // Not a valid URL, fall through
-    }
-  }
-
-  // New short-code challenges live in Firestore
-  if (isShortChallengeCode(raw)) {
-    const ch = await fetchChallengeDoc(raw);
-    if (!ch) return false;
-
-    const ops = ch.operations || ch.ops || operations;
-    const digs = ch.digits || ch.digs || digits;
-    const count = Number(ch.questionCount || ch.count || 20);
-    const seed = Number(ch.seed);
-
-    if (!seed || !ops || !digs) return false;
-
-    const qs = generateQuestionsFromSeed(seed, count, ops, digs);
-    if (!qs.length) return false;
-
-    setChallengeMode(true);
-    setChallengeCreator(ch.creatorName || ch.creator || 'Friend');
-    setChallengeScore(Number(ch.creatorScore || ch.score || 0));
-    setChallengeTime(Number(ch.creatorTime || ch.time || 0));
-    setChallengeSeed(seed);
-
-    setOperations(ops);
-    setDigits(digs);
-
-    setQuestions(qs);
-    setQuestionCount(qs.length);
-    setMode('questions');
-
-    setCurrentIndex(0);
-    setScore(0);
-    setTotalCorrect(0);
-    setCurrentStreak(0);
-    setMaxStreak(0);
-    setPoints(0);
-    setFeedback(null);
-
-    // Clear URL parameter
-    window.history.replaceState({}, '', window.location.pathname);
-
-    setStage('practicing');
-
-    // Optional: increment plays (non-critical)
-    try {
-      db.collection('challenges').doc(raw).update({
-        plays: firebase.firestore.FieldValue.increment(1)
-      });
-    } catch (e) {}
-
-    return true;
-  }
-
-  // Backwards compatibility: old long challenge strings
-  const decoded = decodeChallenge(raw);
-  if (!decoded) return false;
-
-  setChallengeMode(true);
-  setChallengeCreator(decoded.creator);
-  setChallengeScore(decoded?.creatorScore);
-  setChallengeTime(decoded?.creatorTime);
-  setChallengeSeed(decoded.seed);
-  setQuestions(decoded?.questions);
-  setQuestionCount(decoded?.questions.length);
-  setMode('questions');
-  setOperations(decoded.ops);
-  setDigits(decoded.digs);
-
-  setCurrentIndex(0);
-  setScore(0);
-  setTotalCorrect(0);
-  setCurrentStreak(0);
-  setMaxStreak(0);
-  setPoints(0);
-  setFeedback(null);
-
-  window.history.replaceState({}, '', window.location.pathname);
-
-  setStage('practicing');
-  return true;
-};
-
-const startChallenge = async () => {
-  const ok = await startChallengeFromCode(challengeCodeInput);
-  if (!ok) {
-    setShareMessage('Invalid or expired challenge code! 😕');
-    setTimeout(() => setShareMessage(''), 3000);
-  }
-};      
+      
       const retryMissed = () => {
         const missed = results.filter(r => !r.isCorrect);
         if (missed.length === 0) return;
@@ -1445,83 +1397,16 @@ const startChallenge = async () => {
         setStage('practicing');
       };
 
-
       // History view
       if (showHistory) {
-        const localHistory = getHistory();
-
-        // Prefer Firestore sessions when signed in, otherwise fall back to localStorage history
-        const sessionsRaw = user ? (userSessions || []) : localHistory;
-
-        const normalizeSession = (s) => {
-          const ts = s.timestamp?.toDate ? s.timestamp.toDate() : (s.date ? new Date(s.date) : new Date());
-          const opsArr = Array.isArray(s.operations) ? s.operations : (s.operations ? [s.operations] : []);
-          const opsObj = {
-            addition: opsArr.includes('addition'),
-            subtraction: opsArr.includes('subtraction'),
-            multiplication: opsArr.includes('multiplication'),
-            division: opsArr.includes('division')
-          };
-          const digs = s.digits || digits;
-          const pct = (s.score ?? s.percentage) ?? 0;
-          const total = s.total ?? s.questionCount ?? 0;
-          const timeSeconds = s.time ?? s.timeTaken ?? 0;
-          
-          // FIX 3: Removed fallback to long string. Only show if short code exists.
-          const code = s.challengeCode || null; 
-          
-          const url = code ? buildChallengeUrl(code) : null;
-
-          return {
-            ...s,
-            _dateObj: ts,
-            _opsArr: opsArr,
-            _opsObj: opsObj,
-            _digits: digs,
-            _pct: pct,
-            _total: total,
-            _timeSeconds: timeSeconds,
-            _code: code,
-            _url: url
-          };
-        };
-
-        const sessions = sessionsRaw
-          .map(normalizeSession)
-          .sort((a,b) => (b._dateObj?.getTime?.() || 0) - (a._dateObj?.getTime?.() || 0));
-
-        const avgPct = sessions.length ? Math.round(sessions.reduce((sum, s) => sum + Number(s._pct || 0), 0) / sessions.length) : 0;
-        const bestPct = sessions.length ? Math.max(...sessions.map(s => Number(s._pct || 0))) : 0;
-        const bestPoints = sessions.length ? Math.max(...sessions.map(s => Number(s.points || 0))) : 0;
-        const bestStreak = sessions.length ? Math.max(...sessions.map(s => Number(s.streak || s.maxStreak || 0))) : 0;
-
-        const toggleExpand = (id) => setExpandedSessionId(expandedSessionId === id ? null : id);
-
-        const shareOrCopyChallenge = async (session) => {
-  const hasSeed = session && (session.seed || session._seed);
-  if (!hasSeed) {
-    setProgressMessage('This session cannot be challenged (missing seed).');
-    setTimeout(() => setProgressMessage(''), 2500);
-    return;
-  }
-
-  const res = await createChallenge(session);
-  if (res && res.code) {
-    setProgressMessage(`Challenge created! Code: ${res.code}`);
-    setTimeout(() => setProgressMessage(''), 3000);
-  }
-};
-
+        const history = getHistory();
+        const recentHistory = history.slice(-20).reverse();
+        
         return (
           <div className="min-h-screen bg-gradient-to-br from-indigo-400 via-purple-300 to-pink-200 p-6">
-            <div className="max-w-3xl mx-auto bg-white rounded-3xl shadow-2xl p-8">
+            <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-2xl p-8">
               <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h1 className="text-3xl font-bold text-purple-600">📊 Your Progress</h1>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {user ? 'Showing your signed-in sessions' : 'Sign in to sync your sessions across devices'}
-                  </p>
-                </div>
+                <h1 className="text-3xl font-bold text-purple-600">📊 Your Progress</h1>
                 <button
                   onClick={() => setShowHistory(false)}
                   className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
@@ -1529,175 +1414,61 @@ const startChallenge = async () => {
                   Back
                 </button>
               </div>
-
-              {progressMessage && (
-                <div className="mb-4 p-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm">
-                  {progressMessage}
-                </div>
-              )}
-
-              {user && userSessionsLoading && (
-                <p className="text-gray-500 text-center py-6">Loading your sessions...</p>
-              )}
-
-              {user && userSessionsError && (
-                <p className="text-red-500 text-center py-6">Could not load sessions. Check the console for details.</p>
-              )}
-
-              {sessions.length === 0 ? (
+              
+              {recentHistory.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No practice sessions yet. Start practicing to see your progress!</p>
               ) : (
-                <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
-                  {sessions.map((session) => {
-                    const id = session.id || session.date || session._dateObj?.toISOString();
-                    const expanded = expandedSessionId === id;
-
-                    const opsLabel = session._opsArr.length
-                      ? session._opsArr.map(op => op.charAt(0).toUpperCase() + op.slice(1)).join(', ')
-                      : 'Mixed';
-
-                    const timeLabel = `${Math.floor(session._timeSeconds / 60)}:${(session._timeSeconds % 60).toString().padStart(2, '0')}`;
-
-                    return (
-                      <div key={id} className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                        <div className="flex justify-between items-start gap-4">
-                          <div className="min-w-0">
-                            <div className="font-semibold text-gray-800 truncate">{opsLabel}</div>
-                            <div className="text-sm text-gray-500">
-                              {session._dateObj.toLocaleString()} • {session._total} questions • ⏱ {timeLabel}
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            <div className={`text-2xl font-bold ${
-                              session._pct >= 80 ? 'text-green-600' : session._pct >= 50 ? 'text-yellow-500' : 'text-red-500'
-                            }`}>
-                              {session._pct}%
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              ⭐ {session.points || 0} pts • 🔥 {session.streak || session.maxStreak || 0}
-                            </div>
-                          </div>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {recentHistory.map((session, i) => (
+                    <div key={i} className="bg-gray-50 rounded-lg p-4 flex justify-between items-center">
+                      <div>
+                        <div className="font-semibold text-gray-700">
+                          {session.operations.map(op => op.charAt(0).toUpperCase() + op.slice(1)).join(', ')}
                         </div>
-
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            onClick={() => toggleExpand(id)}
-                            className="px-3 py-2 rounded-lg bg-white border hover:bg-gray-100 text-sm"
-                          >
-                            {expanded ? 'Hide details' : 'View details'}
-                          </button>
-
-                          <button
-                            onClick={() => shareOrCopyChallenge(session)}
-                            disabled={false} // Always allow trying to create/share
-                            className="px-3 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-semibold hover:from-purple-600 hover:to-pink-600"
-                          >
-                            🎯 Challenge a friend
-                          </button>
-
-                          {session._code && (
-                            <button
-                              onClick={async () => {
-                                await copyText(session._code);
-                                setProgressMessage('Challenge code copied!');
-                                setTimeout(() => setProgressMessage(''), 2000);
-                              }}
-                              className="px-3 py-2 rounded-lg bg-white border hover:bg-gray-100 text-sm font-mono"
-                            >
-                              Copy code
-                            </button>
-                          )}
+                        <div className="text-sm text-gray-500">
+                          {new Date(session.date).toLocaleDateString()} • {session.total} questions
                         </div>
-
-                        {expanded && (
-                          <div className="mt-4 bg-white rounded-xl p-4 border">
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                              <div>
-                                <div className="text-gray-500">Correct</div>
-                                <div className="font-semibold text-gray-800">{session.correct ?? 0} / {session._total}</div>
-                              </div>
-                              <div>
-                                <div className="text-gray-500">Points</div>
-                                <div className="font-semibold text-gray-800">{session.points ?? 0}</div>
-                              </div>
-                              <div>
-                                <div className="text-gray-500">Max streak</div>
-                                <div className="font-semibold text-gray-800">{session.streak ?? session.maxStreak ?? 0}</div>
-                              </div>
-                              <div>
-                                <div className="text-gray-500">Mode</div>
-                                <div className="font-semibold text-gray-800">{session.mode || 'questions'}</div>
-                              </div>
-                              <div>
-                                <div className="text-gray-500">Adaptive</div>
-                                <div className="font-semibold text-gray-800">{session.adaptiveDifficulty ? 'On' : 'Off'}</div>
-                              </div>
-                              <div>
-                                <div className="text-gray-500">Seed</div>
-                                <div className="font-semibold text-gray-800 font-mono">{session.seed ?? '—'}</div>
-                              </div>
-                            </div>
-
-                            {session._url && (
-                              <div className="mt-4">
-                                <div className="text-xs text-gray-500 mb-1">Challenge link</div>
-                                <div className="flex gap-2">
-                                  <input
-                                    readOnly
-                                    value={session._url}
-                                    className="w-full px-3 py-2 rounded-lg border text-xs text-gray-700"
-                                  />
-                                  <button
-                                    onClick={async () => {
-                                      await copyText(session._url);
-                                      setProgressMessage('Challenge link copied!');
-                                      setTimeout(() => setProgressMessage(''), 2000);
-                                    }}
-                                    className="px-3 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-sm"
-                                  >
-                                    Copy
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
-                    );
-                  })}
+                      <div className="text-right">
+                        <div className={`text-2xl font-bold ${session.percentage >= 70 ? 'text-green-500' : session.percentage >= 50 ? 'text-yellow-500' : 'text-red-500'}`}>
+                          {session.percentage}%
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          🔥 {session.maxStreak} streak
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
-
-              <div className="mt-6 pt-6 border-t">
-                <h3 className="font-semibold text-gray-700 mb-3">All-Time Stats</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                  <div className="bg-purple-100 rounded-lg p-3">
-                    <div className="text-2xl font-bold text-purple-600">{sessions.length}</div>
-                    <div className="text-sm text-gray-600">Sessions</div>
-                  </div>
-                  <div className="bg-green-100 rounded-lg p-3">
-                    <div className="text-2xl font-bold text-green-600">{avgPct}%</div>
-                    <div className="text-sm text-gray-600">Avg score</div>
-                  </div>
-                  <div className="bg-blue-100 rounded-lg p-3">
-                    <div className="text-2xl font-bold text-blue-600">{bestPoints}</div>
-                    <div className="text-sm text-gray-600">Best points</div>
-                  </div>
-                  <div className="bg-orange-100 rounded-lg p-3">
-                    <div className="text-2xl font-bold text-orange-600">{bestStreak}</div>
-                    <div className="text-sm text-gray-600">Best streak</div>
+              
+              {history.length > 0 && (
+                <div className="mt-6 pt-6 border-t">
+                  <h3 className="font-semibold text-gray-700 mb-3">All-Time Stats</h3>
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="bg-purple-100 rounded-lg p-3">
+                      <div className="text-2xl font-bold text-purple-600">{history.length}</div>
+                      <div className="text-sm text-gray-600">Sessions</div>
+                    </div>
+                    <div className="bg-green-100 rounded-lg p-3">
+                      <div className="text-2xl font-bold text-green-600">
+                        {Math.round(history.reduce((acc, h) => acc + h.percentage, 0) / history.length)}%
+                      </div>
+                      <div className="text-sm text-gray-600">Avg Score</div>
+                    </div>
+                    <div className="bg-orange-100 rounded-lg p-3">
+                      <div className="text-2xl font-bold text-orange-600">
+                        {Math.max(...history.map(h => h.maxStreak))}
+                      </div>
+                      <div className="text-sm text-gray-600">Best Streak</div>
+                    </div>
                   </div>
                 </div>
-                {bestPct > 0 && (
-                  <p className="text-xs text-gray-500 mt-3 text-center">Best score: {bestPct}%</p>
-                )}
-              </div>
+              )}
             </div>
           </div>
         );
       }
-
-
 
       // Leaderboard view
       if (showLeaderboard) {
@@ -1871,9 +1642,8 @@ const startChallenge = async () => {
 
       // Challenge URL landing screen
       if (urlChallengeCode && stage === 'setup') {
-        const isShort = isShortChallengeCode(urlChallengeCode);
-        const decoded = !isShort ? decodeChallenge(urlChallengeCode) : null;
-        const isValid = isShort || decoded !== null;
+        const decoded = decodeChallenge(urlChallengeCode);
+        const isValid = decoded !== null;
         
         return (
           <div className="min-h-screen bg-gradient-to-br from-yellow-400 via-orange-300 to-red-300 p-6 flex items-center justify-center">
@@ -1884,13 +1654,13 @@ const startChallenge = async () => {
               {isValid ? (
                 <>
                   <p className="text-xl text-gray-600 mb-2">
-                    Can you beat <span className="font-bold text-orange-600">{decoded?.creatorScore ?? 'their'}%</span>?
+                    Can you beat <span className="font-bold text-orange-600">{decoded.creatorScore}%</span>?
                   </p>
                   <p className="text-gray-500 mb-4">
-                    {decoded?.questions.length} questions
-                    {decoded?.creatorTime && ` • ${Math.floor(decoded?.creatorTime/60)}:${(decoded?.creatorTime%60).toString().padStart(2,'0')}`}
+                    {decoded.questions.length} questions
+                    {decoded.creatorTime && ` • ${Math.floor(decoded.creatorTime/60)}:${(decoded.creatorTime%60).toString().padStart(2,'0')}`}
                   </p>
-                  {decoded?.creatorScore === 100 && decoded?.creatorTime && (
+                  {decoded.creatorScore === 100 && decoded.creatorTime && (
                     <p className="text-sm text-orange-500 mb-4">
                       Perfect score! Beat their time to win!
                     </p>
@@ -2173,7 +1943,7 @@ const startChallenge = async () => {
                     <textarea
                       value={challengeCodeInput}
                       onChange={(e) => setChallengeCodeInput(e.target.value)}
-                      placeholder="Enter 6-character code (or paste a link)..."
+                      placeholder="Paste challenge code here..."
                       className="w-full p-3 rounded-lg border-2 border-yellow-300 text-gray-700 font-mono text-sm h-20 resize-none"
                     />
                     <button
