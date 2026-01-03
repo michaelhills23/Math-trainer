@@ -264,7 +264,7 @@
       
       try {
         await db.collection('scores').add({
-          userId: user.uid, // <-- fix
+          userId: user.uid,
           userName: user.displayName || 'Anonymous',
           userPhoto: user.photoURL,
           score: scoreData.percentage,
@@ -285,31 +285,61 @@
     const useLeaderboard = () => {
       const [leaderboard, setLeaderboard] = useState([]);
       const [loading, setLoading] = useState(true);
-      
+
       const fetchLeaderboard = async () => {
         setLoading(true);
         try {
+          // Preferred query (score desc, faster time wins ties)
           const snapshot = await db.collection('scores')
             .orderBy('score', 'desc')
             .orderBy('time', 'asc')
             .limit(50)
             .get();
-          
-          const scores = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
+
+          const scores = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setLeaderboard(scores);
         } catch (error) {
+          // If Firestore asks for a composite index, fall back to a single orderBy so you still see data.
           console.error('Error fetching leaderboard:', error);
+
+          try {
+            const snapshot = await db.collection('scores')
+              .orderBy('score', 'desc')
+              .limit(50)
+              .get();
+
+            const scores = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setLeaderboard(scores);
+          } catch (fallbackError) {
+            console.error('Leaderboard fallback query failed:', fallbackError);
+          }
+        } finally {
+          setLoading(false);
         }
-        setLoading(false);
       };
-      
+
       useEffect(() => {
-        fetchLeaderboard();
+        // Realtime listener keeps the leaderboard updated without needing refresh.
+        const q = db.collection('scores')
+          .orderBy('score', 'desc')
+          .limit(50);
+
+        const unsub = q.onSnapshot(
+          (snap) => {
+            const scores = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setLeaderboard(scores);
+            setLoading(false);
+          },
+          (err) => {
+            console.error('Leaderboard realtime listener error:', err);
+            // If listener fails (often due to index/rules), do a one-time fetch so we can still show something.
+            fetchLeaderboard();
+          }
+        );
+
+        return () => unsub();
       }, []);
-      
+
       return { leaderboard, loading, refresh: fetchLeaderboard };
     };
 
