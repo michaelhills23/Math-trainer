@@ -249,6 +249,7 @@
         await navigator.clipboard.writeText(text);
         return true;
       } catch (e) {
+        // Fallback for older browsers
         const ta = document.createElement('textarea');
         ta.value = text;
         document.body.appendChild(ta);
@@ -259,7 +260,7 @@
       }
     };
 
-    const VERSION = 'v3.99';
+    const VERSION = 'v4.0';
     
     // Version Badge Component
     const VersionBadge = () => (
@@ -413,9 +414,6 @@
       const [showShareCard, setShowShareCard] = useState(false);
       const [shareMessage, setShareMessage] = useState('');
       const [generatedChallengeCode, setGeneratedChallengeCode] = useState(null);
-      
-      // State to cache generated codes locally so they don't change on re-render or re-click
-      const [localChallengeCodes, setLocalChallengeCodes] = useState({});
 
       // Incoming Challenge State
       const [challengeMode, setChallengeMode] = useState(false);
@@ -426,8 +424,6 @@
       const [challengeCodeInput, setChallengeCodeInput] = useState('');
       const [playerName, setPlayerName] = useState('');
       const [urlChallengeCode, setUrlChallengeCode] = useState(null);
-      const [landingChallengeData, setLandingChallengeData] = useState(null);
-      const [landingLoading, setLandingLoading] = useState(false);
       
       // Refs
       const shareCardRef = useRef(null);
@@ -897,6 +893,9 @@
       };
       
       // --- SEED-BASED CHALLENGE GENERATION ---
+      const [challengeSeed, setChallengeSeed] = useState(null);
+      
+      // Mulberry32 seeded RNG
       const seededRandom = (seed) => {
         return () => {
           seed = (seed + 0x6D2B79F5) | 0;
@@ -1023,70 +1022,28 @@
         return code;
       };
 
-      const createChallengeDoc = async (payload) => {
-        const challengesRef = db.collection('challenges');
-        // Try up to 5 times to avoid ID collision
-        for (let attempt = 0; attempt < 5; attempt++) {
-          const code = generateChallengeCode(6);
-          const docRef = challengesRef.doc(code);
-          const existing = await docRef.get();
-          if (existing.exists) continue;
-
-          await docRef.set({
-            ...payload,
-            plays: 0,
-            isPublic: true,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            expiresAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
-          });
-          return code;
-        }
-        throw new Error('Could not generate a unique challenge code. Please try again.');
-      };
-
-      const createChallenge = async (sessionOverride = null) => {
+const createChallenge = async (sessionOverride = null) => {
         try {
           const name = user?.displayName || playerName || 'Someone';
 
-          // 1. Data Source: sessionOverride (from history) OR current run state
+          // 1. Check if we already have a code for this session in memory
+          if (sessionOverride && sessionOverride._code) {
+             const code = sessionOverride._code;
+             const url = buildChallengeUrl(code);
+             await copyText(`🎯 ${name} challenges you!\n\nCode: ${code}\nBeat ${sessionOverride._pct}% to win!\n\n${url}`);
+             setProgressMessage('Challenge code copied!'); 
+             setTimeout(() => setProgressMessage(''), 2000);
+             return { code, url };
+          }
+
+          // Data source setup (same as before)
           const seed = Number(sessionOverride?.seed ?? challengeSeed);
           const ops = sessionOverride?._opsObj ?? sessionOverride?.operations ?? operations;
           const digs = sessionOverride?._digits ?? sessionOverride?.digits ?? digits;
           const count = Number(sessionOverride?.questionCount ?? sessionOverride?._total ?? questionCount ?? 20);
-
-          // 2. Prevent Duplicate Codes for SAME session
-          // Check if session object already has a code
-          let existingCode = sessionOverride?.challengeCode || sessionOverride?._code;
-          // Check local cache for recently generated code for this session ID
-          if (!existingCode && sessionOverride?.id && localChallengeCodes[sessionOverride.id]) {
-             existingCode = localChallengeCodes[sessionOverride.id];
-          }
-
-          if (existingCode) {
-             const url = buildChallengeUrl(existingCode);
-             // Just copy/share existing, don't create new doc
-             const creatorScore = Number(sessionOverride?._pct ?? sessionOverride?.score ?? 0);
-             const challengeText = `🎯 ${name} challenges you!\n\nCode: ${existingCode}\nBeat ${creatorScore}% to win!\n\n${url}`;
-             
-             if (navigator.share) {
-                try { await navigator.share({ title: 'Math Challenge', text: challengeText, url: url }); }
-                catch (e) { if (e.name !== 'AbortError') await copyToClipboard(challengeText); }
-             } else {
-                await copyToClipboard(challengeText);
-             }
-             setShareMessage('Challenge copied!');
-             setTimeout(() => setShareMessage(''), 2000);
-             return { code: existingCode, url };
-          }
-
-          // 3. Prepare Creation Data
-          const currentScore = results.length > 0 
-            ? Math.round((results.filter(r => r.isCorrect).length / results.length) * 100) 
-            : 0;
-          const currentTimeSeconds = (startTime && endTime) 
-            ? Math.round((endTime - startTime) / 1000) 
-            : 0;
-
+          
+          const currentScore = results.length > 0 ? Math.round((results.filter(r => r.isCorrect).length / results.length) * 100) : 0;
+          const currentTimeSeconds = (startTime && endTime) ? Math.round((endTime - startTime) / 1000) : 0;
           const creatorScore = Number(sessionOverride?._pct ?? sessionOverride?.score ?? currentScore);
           const creatorTime = Number(sessionOverride?._timeSeconds ?? sessionOverride?.time ?? currentTimeSeconds);
 
@@ -1096,19 +1053,46 @@
             return;
           }
 
-          // 4. Create New Doc
+          // 2. CHECK FIRESTORE: Does a challenge already exist for this session ID?
+          if (sessionOverride?.id) {
+             const existingQuery = await db.collection('challenges')
+               .where('sessionId', '==', sessionOverride.id)
+               .limit(1)
+               .get();
+             
+             if (!existingQuery.empty) {
+               const existingDoc = existingQuery.docs[0];
+               const code = existingDoc.id;
+               
+               // Update the local session so we don't query again
+               sessionOverride._code = code; 
+               if (user) {
+                 // Sync back to the scores collection so it persists in history
+                 db.collection('scores').doc(sessionOverride.id).update({ challengeCode: code });
+               }
+
+               const url = buildChallengeUrl(code);
+               await copyText(`🎯 ${name} challenges you!\n\nCode: ${code}\nBeat ${creatorScore}% to win!\n\n${url}`);
+               setProgressMessage('Existing code copied!');
+               setTimeout(() => setProgressMessage(''), 2000);
+               return { code, url };
+             }
+          }
+
+          // 3. Create NEW if none exists
           const code = await createChallengeDoc({
             ownerUserId: user?.uid || null,
-            sessionId: sessionOverride?.id || null,
+            sessionId: sessionOverride?.id || null, // Important: Save the session ID
             creatorName: name,
             creatorScore, creatorTime, seed,
             operations: ops, digits: digs, questionCount: count,
             generatorVersion: 1
           });
 
-          // 5. Update Local Cache (to prevent duplicate generation next time)
-          if (sessionOverride?.id) {
-             setLocalChallengeCodes(prev => ({...prev, [sessionOverride.id]: code}));
+          // 4. Save the new code back to the original score document
+          if (user && sessionOverride?.id) {
+             db.collection('scores').doc(sessionOverride.id).update({ challengeCode: code });
+             sessionOverride._code = code; // Update local memory immediately
           }
 
           const challengeUrl = buildChallengeUrl(code);
@@ -1120,6 +1104,7 @@
           } else {
             await copyToClipboard(challengeText);
           }
+          
           setShareMessage('Challenge copied!');
           setTimeout(() => setShareMessage(''), 2000);
           setGeneratedChallengeCode(code);
@@ -1150,10 +1135,11 @@
         }
       };
 
-      const startChallengeFromCode = async (code) => {
+const startChallengeFromCode = async (code) => {
         let raw = (code || '').trim();
         if (!raw) return false;
 
+        // Parse URL if pasted directly
         if (raw.includes('c=')) {
           try {
             const u = new URL(raw);
@@ -1193,8 +1179,8 @@
           setMaxStreak(0);
           setPoints(0);
           setFeedback(null);
-          
-          // FIX 2: Reset Start Time for accurate challenge timing
+
+          // FIX: Reset timer state
           setStartTime(Date.now());
           setEndTime(null);
 
@@ -1227,8 +1213,8 @@
         setMaxStreak(0);
         setPoints(0);
         setFeedback(null);
-        
-        // FIX 2: Reset Start Time
+
+        // FIX: Reset timer state
         setStartTime(Date.now());
         setEndTime(null);
 
@@ -1286,10 +1272,7 @@
           const pct = (s.score ?? s.percentage) ?? 0;
           const total = s.total ?? s.questionCount ?? 0;
           const timeSeconds = s.time ?? s.timeTaken ?? 0;
-          
-          // Use stored code OR locally cached code for this session ID
-          const code = s.challengeCode || (s.id && localChallengeCodes[s.id]) || null; 
-          
+          const code = s.challengeCode || null; 
           const url = code ? buildChallengeUrl(code) : null;
 
           return {
@@ -1316,8 +1299,6 @@
             setTimeout(() => setProgressMessage(''), 2500);
             return;
           }
-          
-          // createChallenge now checks for existing codes too
           const res = await createChallenge(session);
           if (res && res.code) {
             setProgressMessage(`Challenge created! Code: ${res.code}`);
@@ -1364,9 +1345,7 @@
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <button onClick={() => toggleExpand(id)} className="px-3 py-2 rounded-lg bg-white border hover:bg-gray-100 text-sm">{expanded ? 'Hide details' : 'View details'}</button>
-                          
                           <button onClick={() => shareOrCopyChallenge(session)} className="px-3 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-semibold hover:from-purple-600 hover:to-pink-600">🎯 Challenge a friend</button>
-                          
                           {session._code && (
                             <button onClick={async () => { await copyText(session._code); setProgressMessage('Challenge code copied!'); setTimeout(() => setProgressMessage(''), 2000); }} className="px-3 py-2 rounded-lg bg-white border hover:bg-gray-100 text-sm font-mono">Copy code</button>
                           )}
@@ -1479,46 +1458,47 @@
         );
       }
 
+      // --- NEW STATE FOR PREVIEW ---
+      const [challengePreview, setChallengePreview] = useState(null);
+
+      // Effect to fetch preview data when URL code is present
+      useEffect(() => {
+        if (urlChallengeCode && isShortChallengeCode(urlChallengeCode)) {
+          fetchChallengeDoc(urlChallengeCode).then(doc => {
+            if (doc) setChallengePreview(doc);
+          });
+        }
+      }, [urlChallengeCode]);
+
       // --- RENDERING: CHALLENGE LANDING PAGE ---
       if (urlChallengeCode && stage === 'setup') {
         const isShort = isShortChallengeCode(urlChallengeCode);
         const decoded = !isShort ? decodeChallenge(urlChallengeCode) : null;
         
-        // FIX 1: Add Effect to fetch the landing data
-        useEffect(() => {
-           if (isShort) {
-              setLandingLoading(true);
-              fetchChallengeDoc(urlChallengeCode).then(data => {
-                 setLandingChallengeData(data);
-                 setLandingLoading(false);
-              });
-           } else {
-              setLandingChallengeData(decoded);
-           }
-        }, [urlChallengeCode]);
-
-        if (landingLoading) {
-           return (
-             <div className="min-h-screen bg-gradient-to-br from-yellow-400 via-orange-300 to-red-300 p-6 flex items-center justify-center">
-                <div className="text-white text-2xl font-bold animate-pulse">Loading Challenge...</div>
-             </div>
-           );
-        }
-
-        const dataToDisplay = landingChallengeData;
-        const isValid = !!dataToDisplay;
+        // Valid if we have a decoded long-code OR we successfully fetched the short-code preview
+        const isValid = (isShort && challengePreview) || (!isShort && decoded);
+        const isLoading = isShort && !challengePreview;
         
+        // Extract display data safely
+        const displayScore = challengePreview?.creatorScore ?? decoded?.creatorScore ?? 'their';
+        const displayCount = challengePreview?.questionCount ?? decoded?.questions?.length ?? '??';
+        const displayCreator = challengePreview?.creatorName ?? decoded?.creator ?? 'Someone';
+
         return (
           <div className="min-h-screen bg-gradient-to-br from-yellow-400 via-orange-300 to-red-300 p-6 flex items-center justify-center">
             <div className="max-w-md mx-auto bg-white rounded-3xl shadow-2xl p-8 text-center">
               <div className="text-6xl mb-4">⚔️</div>
               <h1 className="text-3xl font-bold text-gray-800 mb-2">You've Been Challenged!</h1>
-              {isValid ? (
+              
+              {isLoading ? (
+                 <p className="text-gray-600 animate-pulse">Loading challenge details...</p>
+              ) : isValid ? (
                 <>
-                  <p className="text-xl text-gray-600 mb-2">Can you beat <span className="font-bold text-orange-600">{dataToDisplay.creatorScore ?? dataToDisplay.score ?? 'their'}%</span>?</p>
-                  <p className="text-gray-500 mb-4">
-                    {dataToDisplay.questionCount ?? (dataToDisplay.questions ? dataToDisplay.questions.length : 0)} questions
-                    {dataToDisplay.creatorTime ? ` • ${Math.floor(dataToDisplay.creatorTime/60)}:${(dataToDisplay.creatorTime%60).toString().padStart(2,'0')}` : ''}
+                  <p className="text-xl text-gray-600 mb-2">
+                    <span className="font-bold text-orange-600">{displayCreator}</span> challenges you!
+                  </p>
+                  <p className="text-lg text-gray-500 mb-4">
+                    Beat <span className="font-bold text-purple-600">{displayScore}%</span> in {displayCount} questions
                   </p>
                   <div className="mb-6">
                     <label className="text-gray-600 block mb-2">Your name:</label>
