@@ -89,17 +89,33 @@
   <script type="text/babel">
     const { useState, useEffect, useRef, useCallback } = React;
 
-    // Sound generation using Web Audio API
+    /**
+     * Custom hook for playing sound effects using Web Audio API
+     * @returns {{playCorrect: Function, playWrong: Function, playStreak: Function, playCelebration: Function, playCountdown: Function, playGo: Function}} Sound effect functions
+     */
     const useSound = () => {
+      /** @type {React.MutableRefObject<AudioContext|null>} */
       const audioContextRef = useRef(null);
-      
+
+      /**
+       * Gets or creates the AudioContext instance
+       * @returns {AudioContext} The audio context
+       */
       const getContext = () => {
         if (!audioContextRef.current) {
           audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
         }
         return audioContextRef.current;
       };
-      
+
+      /**
+       * Plays a tone with specified parameters
+       * @param {number} frequency - Frequency in Hz
+       * @param {number} duration - Duration in seconds
+       * @param {OscillatorType} [type='sine'] - Oscillator type
+       * @param {number} [volume=0.3] - Volume level (0-1)
+       * @returns {void}
+       */
       const playTone = (frequency, duration, type = 'sine', volume = 0.3) => {
         try {
           const ctx = getContext();
@@ -156,8 +172,14 @@
       return { playCorrect, playWrong, playStreak, playCelebration, playCountdown, playGo };
     };
 
-    // Confetti component
+    /**
+     * Confetti component for celebration effects
+     * @param {{count?: number}} props - Component props
+     * @param {number} [props.count=50] - Number of confetti pieces to display
+     * @returns {JSX.Element} Confetti animation element
+     */
     const Confetti = ({ count = 50 }) => {
+      /** @type {string[]} */
       const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
       
       return (
@@ -178,7 +200,25 @@
       );
     };
 
-    // Progress history helpers
+    /**
+     * @typedef {Object} SessionResult
+     * @property {string[]} operations - Array of operation types
+     * @property {Object} digits - Digit configuration for each operation
+     * @property {string} mode - Practice mode ('questions' or 'time')
+     * @property {number} correct - Number of correct answers
+     * @property {number} total - Total number of questions
+     * @property {number} percentage - Percentage score
+     * @property {number} maxStreak - Maximum streak achieved
+     * @property {number} points - Total points earned
+     * @property {number} timeTaken - Time taken in milliseconds
+     * @property {string} [date] - ISO date string
+     */
+
+    /**
+     * Saves a practice session result to local storage
+     * @param {SessionResult} result - The session result to save
+     * @returns {void}
+     */
     const saveResult = (result) => {
       try {
         const history = JSON.parse(localStorage.getItem('mathTrainerHistory') || '[]');
@@ -194,6 +234,10 @@
       }
     };
 
+    /**
+     * Gets practice session history from local storage
+     * @returns {SessionResult[]} Array of session results
+     */
     const getHistory = () => {
       try {
         return JSON.parse(localStorage.getItem('mathTrainerHistory') || '[]');
@@ -202,8 +246,13 @@
       }
     };
 
+    /**
+     * Gets personal best scores grouped by operation types
+     * @returns {Object.<string, SessionResult>} Map of operation keys to best sessions
+     */
     const getPersonalBests = () => {
       const history = getHistory();
+      /** @type {Object.<string, SessionResult>} */
       const bests = {};
       
       history.forEach(session => {
@@ -225,12 +274,20 @@
       </div>
     );
     
-    // Firebase hooks
+    /**
+     * Custom hook for Firebase authentication
+     * @returns {{user: firebase.User|null, loading: boolean, signInWithGoogle: Function, signOut: Function}} Auth state and functions
+     */
     const useAuth = () => {
+      /** @type {[firebase.User|null, Function]} */
       const [user, setUser] = useState(null);
+      /** @type {[boolean, Function]} */
       const [loading, setLoading] = useState(true);
-      
+
       useEffect(() => {
+        /**
+         * @param {firebase.User|null} user - The authenticated user or null
+         */
         const unsubscribe = auth.onAuthStateChanged((user) => {
           setUser(user);
           setLoading(false);
@@ -258,7 +315,23 @@
       return { user, loading, signInWithGoogle, signOut };
     };
     
-    // Save score to leaderboard
+    /**
+     * @typedef {Object} ScoreData
+     * @property {number} percentage - Percentage score
+     * @property {number} correct - Number of correct answers
+     * @property {number} total - Total questions
+     * @property {number} maxStreak - Maximum streak achieved
+     * @property {number} points - Total points earned
+     * @property {number} timeTaken - Time taken in seconds
+     * @property {string[]} operations - Array of operations practiced
+     */
+
+    /**
+     * Saves score to Firebase leaderboard
+     * @param {firebase.User} user - The authenticated user
+     * @param {ScoreData} scoreData - The score data to save
+     * @returns {Promise<void>}
+     */
     const saveToLeaderboard = async (user, scoreData) => {
       if (!user) return;
       
@@ -281,9 +354,31 @@
       }
     };
     
-    // Get leaderboard (metric: 'score' | 'points' | 'streak')
+    /**
+     * @typedef {Object} LeaderboardEntry
+     * @property {string} id - Document ID
+     * @property {string} userId - User ID
+     * @property {string} userName - Display name
+     * @property {string} userPhoto - Photo URL
+     * @property {number} score - Percentage score
+     * @property {number} correct - Correct answers
+     * @property {number} total - Total questions
+     * @property {number} streak - Maximum streak
+     * @property {number} points - Total points
+     * @property {number} time - Time taken in seconds
+     * @property {string[]} operations - Operations practiced
+     * @property {firebase.firestore.Timestamp} timestamp - Server timestamp
+     */
+
+    /**
+     * Custom hook to fetch and subscribe to leaderboard data
+     * @param {'score'|'points'|'streak'} [metric='score'] - The metric to sort by
+     * @returns {{leaderboard: LeaderboardEntry[], loading: boolean, refresh: Function}} Leaderboard data and functions
+     */
     const useLeaderboard = (metric = 'score') => {
+      /** @type {[LeaderboardEntry[], Function]} */
       const [leaderboard, setLeaderboard] = useState([]);
+      /** @type {[boolean, Function]} */
       const [loading, setLoading] = useState(true);
 
       const fetchLeaderboard = async () => {
@@ -330,62 +425,105 @@
       return { leaderboard, loading, refresh: fetchLeaderboard };
     };
 
+    /**
+     * Main Math Trainer application component
+     * @returns {JSX.Element|null} The application UI
+     */
     function MathTrainer() {
       const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
+      /** @type {['score'|'points'|'streak', Function]} */
       const [leaderboardMetric, setLeaderboardMetric] = useState('score');
       const { leaderboard, loading: leaderboardLoading, refresh: refreshLeaderboard } = useLeaderboard(leaderboardMetric);
+      /** @type {[boolean, Function]} */
       const [showLeaderboard, setShowLeaderboard] = useState(false);
-      
+
+      /** @type {['setup'|'countdown'|'practicing'|'results', Function]} */
       const [stage, setStage] = useState('setup');
+      /** @type {[{addition: boolean, subtraction: boolean, multiplication: boolean, division: boolean}, Function]} */
       const [operations, setOperations] = useState({
         addition: false,
         subtraction: false,
         multiplication: false,
         division: false
       });
+      /** @type {[{addition: number, subtraction: number, multiplication: string, division: number}, Function]} */
       const [digits, setDigits] = useState({
         addition: 1,
         subtraction: 1,
         multiplication: '1x1', // Special multiplication modes
         division: 1
       });
+      /** @type {['questions'|'time', Function]} */
       const [mode, setMode] = useState('questions');
+      /** @type {[number, Function]} */
       const [questionCount, setQuestionCount] = useState(10);
+      /** @type {[number, Function]} */
       const [timeLimit, setTimeLimit] = useState(60);
+      /** @type {[boolean, Function]} */
       const [adaptiveDifficulty, setAdaptiveDifficulty] = useState(false);
+      /** @type {[boolean, Function]} */
       const [soundEnabled, setSoundEnabled] = useState(true);
-      
+
+      /** @type {[Question[], Function]} */
       const [questions, setQuestions] = useState([]);
+      /** @type {[number, Function]} */
       const [currentIndex, setCurrentIndex] = useState(0);
+      /** @type {[string, Function]} */
       const [answer, setAnswer] = useState('');
+      /** @type {[Array, Function]} */
       const [results, setResults] = useState([]);
+      /** @type {[number|null, Function]} */
       const [startTime, setStartTime] = useState(null);
+      /** @type {[number|null, Function]} */
       const [endTime, setEndTime] = useState(null);
+      /** @type {[number, Function]} */
       const [timeRemaining, setTimeRemaining] = useState(0);
-      
+
+      /** @type {[number, Function]} */
       const [streak, setStreak] = useState(0);
+      /** @type {[number, Function]} */
       const [maxStreak, setMaxStreak] = useState(0);
+      /** @type {[number, Function]} */
       const [points, setPoints] = useState(0);
-      const [feedback, setFeedback] = useState(null); // 'correct' or 'wrong'
+      /** @type {['correct'|'wrong'|null, Function]} */
+      const [feedback, setFeedback] = useState(null);
+      /** @type {[boolean, Function]} */
       const [showConfetti, setShowConfetti] = useState(false);
+      /** @type {[number|null, Function]} */
       const [countdown, setCountdown] = useState(null);
+      /** @type {[Object, Function]} */
       const [currentDigits, setCurrentDigits] = useState({...digits});
+      /** @type {[boolean, Function]} */
       const [showHistory, setShowHistory] = useState(false);
+      /** @type {[boolean, Function]} */
       const [showShareCard, setShowShareCard] = useState(false);
+      /** @type {[string, Function]} */
       const [shareMessage, setShareMessage] = useState('');
+      /** @type {[boolean, Function]} */
       const [challengeMode, setChallengeMode] = useState(false);
+      /** @type {[string, Function]} */
       const [challengeCreator, setChallengeCreator] = useState('');
+      /** @type {[number|null, Function]} */
       const [challengeScore, setChallengeScore] = useState(null);
+      /** @type {[number|null, Function]} */
       const [challengeTime, setChallengeTime] = useState(null);
+      /** @type {[boolean, Function]} */
       const [showChallengeInput, setShowChallengeInput] = useState(false);
+      /** @type {[string, Function]} */
       const [challengeCodeInput, setChallengeCodeInput] = useState('');
+      /** @type {[string, Function]} */
       const [playerName, setPlayerName] = useState('');
+      /** @type {[string|null, Function]} */
       const [urlChallengeCode, setUrlChallengeCode] = useState(null);
       
+      /** @type {React.MutableRefObject<HTMLDivElement|null>} */
       const shareCardRef = useRef(null);
-      
+
+      /** @type {React.MutableRefObject<HTMLInputElement|null>} */
       const inputRef = useRef(null);
+      /** @type {React.MutableRefObject<number|null>} */
       const timerRef = useRef(null);
+      /** @type {React.MutableRefObject<number|null>} */
       const feedbackTimeoutRef = useRef(null);
       
       const sound = useSound();
@@ -399,13 +537,22 @@
         }
       }, []);
 
+      /**
+       * Generates a random number with specified digits
+       * @param {number} numDigits - Number of digits (1-3)
+       * @returns {number} Random number with specified digits
+       */
       const generateNumber = (numDigits) => {
         const min = numDigits === 1 ? 1 : Math.pow(10, numDigits - 1);
         const max = Math.pow(10, numDigits) - 1;
         return Math.floor(Math.random() * (max - min + 1)) + min;
       };
-      
-      // Generate multiplication numbers based on mode (non-seeded version)
+
+      /**
+       * Generates multiplication numbers based on mode
+       * @param {'1x1'|'2x1'|'3x1'|'2x2'} multMode - Multiplication mode
+       * @returns {[number, number]} Tuple of two numbers to multiply
+       */
       const generateMultNums = (multMode) => {
         switch (multMode) {
           case '1x1': // 1-12 × 1-12
@@ -421,6 +568,21 @@
         }
       };
 
+      /**
+       * @typedef {Object} Question
+       * @property {number} num1 - First number
+       * @property {number} num2 - Second number
+       * @property {string} symbol - Operation symbol (+, −, ×, ÷)
+       * @property {number} correctAnswer - The correct answer
+       * @property {string} operation - Operation type
+       * @property {number|string} digits - Digit configuration
+       */
+
+      /**
+       * Generates a math question based on current settings
+       * @param {Object} [opDigits] - Optional digit configuration to override current settings
+       * @returns {Question|null} Generated question or null if no operations selected
+       */
       const generateQuestion = useCallback((opDigits) => {
         const activeOps = Object.entries(operations).filter(([_, active]) => active);
         if (activeOps.length === 0) return null;
@@ -536,6 +698,11 @@
         }
       }, [stage, mode, timeRemaining, startTime]);
 
+      /**
+       * Finishes the practice session and shows results
+       * @param {Array} [finalResults] - Optional final results array
+       * @returns {void}
+       */
       const finishPractice = (finalResults) => {
         const resultsToSave = finalResults || results;
         const correct = resultsToSave.filter(r => r.isCorrect).length;
@@ -691,6 +858,11 @@
         }, 500);
       };
       
+      /**
+       * Handles keyboard events in the answer input
+       * @param {React.KeyboardEvent<HTMLInputElement>} e - Keyboard event
+       * @returns {void}
+       */
       const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -734,6 +906,11 @@
         }, 300);
       };
 
+      /**
+       * Formats milliseconds into MM:SS format
+       * @param {number} ms - Time in milliseconds
+       * @returns {string} Formatted time string
+       */
       const formatTime = (ms) => {
         const totalSeconds = Math.floor(ms / 1000);
         const minutes = Math.floor(totalSeconds / 60);
@@ -741,6 +918,18 @@
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
       };
 
+      /**
+       * @typedef {Object} Grade
+       * @property {string} grade - Letter grade (A-F)
+       * @property {string} emoji - Emoji representation
+       * @property {string} message - Encouragement message
+       */
+
+      /**
+       * Calculates grade based on percentage score
+       * @param {number} percentage - Percentage score (0-100)
+       * @returns {Grade} Grade object with grade, emoji, and message
+       */
       const getGrade = (percentage) => {
         if (percentage >= 90) return { grade: 'A', emoji: '🌟', message: 'Excellent!' };
         if (percentage >= 80) return { grade: 'B', emoji: '😊', message: 'Great job!' };
@@ -803,6 +992,11 @@ Beat my score! ${challengeUrl}`;
         }
       };
       
+      /**
+       * Copies text to clipboard
+       * @param {string} text - Text to copy
+       * @returns {Promise<void>}
+       */
       const copyToClipboard = async (text) => {
         try {
           await navigator.clipboard.writeText(text);
@@ -900,7 +1094,11 @@ Beat my score! ${challengeUrl}`;
       // Seed-based encoding: just store the seed that generates the same questions
       const [challengeSeed, setChallengeSeed] = useState(null);
       
-      // Seeded random number generator (mulberry32)
+      /**
+       * Seeded random number generator using mulberry32 algorithm
+       * @param {number} seed - Random seed
+       * @returns {() => number} Random number generator function (returns 0-1)
+       */
       const seededRandom = (seed) => {
         return () => {
           seed = (seed + 0x6D2B79F5) | 0;
@@ -909,7 +1107,15 @@ Beat my score! ${challengeUrl}`;
           return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
         };
       };
-      
+
+      /**
+       * Generates questions from a seed for reproducible challenges
+       * @param {number} seed - Random seed
+       * @param {number} count - Number of questions to generate
+       * @param {Object.<string, boolean>} ops - Operations configuration
+       * @param {Object.<string, number|string>} digs - Digits configuration
+       * @returns {Question[]} Array of generated questions
+       */
       const generateQuestionsFromSeed = (seed, count, ops, digs) => {
         const random = seededRandom(seed);
         const activeOps = Object.entries(ops).filter(([_, active]) => active).map(([op]) => op);
@@ -976,10 +1182,13 @@ Beat my score! ${challengeUrl}`;
         return questions;
       };
       
-      // Encode: score.seed.count.ops.digits.time
-      // ops: bitmask (add=1, sub=2, mul=4, div=8)
-      // digits: packed as add*1 + sub*4 + mul*16 + div*64 (each 0-3)
-      // time: in seconds (base36)
+      /**
+       * Encodes challenge data into a shareable string
+       * Format: score.seed.count.ops.digits.time (all base36)
+       * ops: bitmask (add=1, sub=2, mul=4, div=8)
+       * digits: packed as add*1 + sub*4 + mul*16 + div*64
+       * @returns {string} Encoded challenge string
+       */
       const encodeChallenge = () => {
         const correct = results.filter(r => r.isCorrect).length;
         const total = results.length;
@@ -1004,6 +1213,23 @@ Beat my score! ${challengeUrl}`;
         return `${percentage.toString(36)}.${challengeSeed.toString(36)}.${total.toString(36)}.${opBits.toString(36)}.${digitsPacked.toString(36)}.${timeTaken.toString(36)}`;
       };
       
+      /**
+       * @typedef {Object} DecodedChallenge
+       * @property {Question[]} questions - Array of challenge questions
+       * @property {number} seed - Random seed used
+       * @property {Object.<string, boolean>} ops - Operations configuration
+       * @property {Object.<string, number|string>} digs - Digits configuration
+       * @property {string} mode - Practice mode
+       * @property {string} creator - Challenge creator name
+       * @property {number} creatorScore - Creator's score percentage
+       * @property {number|null} creatorTime - Creator's time in seconds
+       */
+
+      /**
+       * Decodes a challenge string into challenge data
+       * @param {string} code - Encoded challenge string
+       * @returns {DecodedChallenge|null} Decoded challenge data or null if invalid
+       */
       const decodeChallenge = (code) => {
         try {
           const parts = code.split('.');
@@ -1084,7 +1310,11 @@ ${challengeUrl}`;
         }
       };
       
-      // Start challenge from a code (used by URL param and manual input)
+      /**
+       * Starts a challenge from an encoded challenge code
+       * @param {string} code - Encoded challenge string
+       * @returns {boolean} True if challenge started successfully
+       */
       const startChallengeFromCode = (code) => {
         const decoded = decodeChallenge(code.trim());
         
