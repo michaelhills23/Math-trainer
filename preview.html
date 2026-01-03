@@ -280,7 +280,7 @@
     };
 
 
-    const VERSION = 'v3.8';
+    const VERSION = 'v3.85';
     
     // Version display component
     const VersionBadge = () => (
@@ -612,14 +612,14 @@
         }
       }, [stage, mode, timeRemaining, startTime]);
 
-      // FIX: Added maxStreakOverride to handle the final update delay
+      // FIX 1: Max Streak Update Fix
       const finishPractice = (finalResults, maxStreakOverride = null) => {
         const resultsToSave = finalResults || results;
         const correct = resultsToSave.filter(r => r.isCorrect).length;
         const total = resultsToSave.length;
         const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
         
-        // Determine the actual max streak to use
+        // Use override if provided (fixes the lag in state update)
         const finalMaxStreak = maxStreakOverride !== null ? maxStreakOverride : maxStreak;
 
         setEndTime(Date.now());
@@ -643,7 +643,7 @@
           correct,
           total,
           percentage,
-          maxStreak: finalMaxStreak, // Use computed streak
+          maxStreak: finalMaxStreak, 
           points,
           timeTaken
         });
@@ -661,7 +661,7 @@
             correct,
             total,
             percentage,
-            maxStreak: finalMaxStreak, // Use computed streak
+            maxStreak: finalMaxStreak,
             points,
             timeTaken: Math.round(timeTaken / 1000)
           });
@@ -757,7 +757,7 @@
           
           const nextIndex = currentIndex + 1;
           
-          // FIX: Calculate current max streak here because state update might lag
+          // Calculate max streak here and pass it
           const currentMaxStreak = Math.max(maxStreak, newStreak);
 
           if (mode === 'questions' && nextIndex >= questionCount) {
@@ -1214,11 +1214,20 @@ Beat my score! ${challengeUrl}`;
           const digs = sessionOverride?._digits ?? sessionOverride?.digits ?? digits;
           const count = Number(sessionOverride?.questionCount ?? sessionOverride?._total ?? questionCount ?? 20);
 
-          // Creator performance
+          // FIX 2: Correctly calculate current score and time if no sessionOverride
+          const currentScore = results.length > 0 
+            ? Math.round((results.filter(r => r.isCorrect).length / results.length) * 100) 
+            : 0;
+
+          const currentTimeSeconds = (startTime && endTime) 
+            ? Math.round((endTime - startTime) / 1000) 
+            : 0;
+
           const creatorScore =
-            Number(sessionOverride?._pct ?? sessionOverride?.score ?? score ?? 0);
+            Number(sessionOverride?._pct ?? sessionOverride?.score ?? currentScore);
+          
           const creatorTime =
-            Number(sessionOverride?._timeSeconds ?? sessionOverride?.time ?? 0);
+            Number(sessionOverride?._timeSeconds ?? sessionOverride?.time ?? currentTimeSeconds);
 
           if (!seed || !ops || !digs || !count) {
             setShareMessage('This session is missing challenge data (seed/settings).');
@@ -1458,7 +1467,7 @@ const startChallenge = async () => {
           const total = s.total ?? s.questionCount ?? 0;
           const timeSeconds = s.time ?? s.timeTaken ?? 0;
           
-          // FIX: Only use the short code if it exists in the DB. Removed fallback to long string.
+          // FIX 3: Removed fallback to long string. Only show if short code exists.
           const code = s.challengeCode || null; 
           
           const url = code ? buildChallengeUrl(code) : null;
