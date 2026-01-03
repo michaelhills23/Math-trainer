@@ -264,7 +264,7 @@
       
       try {
         await db.collection('scores').add({
-          oderId: user.uid,
+          userId: user.uid, // <-- fix
           userName: user.displayName || 'Anonymous',
           userPhoto: user.photoURL,
           score: scoreData.percentage,
